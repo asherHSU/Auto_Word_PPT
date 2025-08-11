@@ -110,3 +110,120 @@ for song in song_order:
 document.save(output_filename)
 print("--------------------")
 print(f"處理完成！檔案 '{output_filename}' 已成功建立！")
+
+from docx import Document
+from pptx import Presentation
+from pptx.dml.color import RGBColor
+from pptx.util import Pt
+from pptx.enum.text import PP_ALIGN  # Import PP_ALIGN for text alignment
+from pptx.util import Inches
+
+# Function to apply font settings
+def apply_font_settings(paragraph, font_name, font_size, font_color, is_bold=False):
+    paragraph.font.name = font_name
+    paragraph.font.size = Pt(font_size)
+    paragraph.font.color.rgb = font_color
+    paragraph.font.bold = is_bold
+    
+#要修改成大字報與PPT輸出的位置
+doc = Document(output_filename)
+output_path = "敬拜PPT.pptx"
+
+# Create a PowerPoint presentation object
+presentation = Presentation()
+
+# Set slide size for 16:9 aspect ratio
+presentation.slide_width = Inches(10)  # Width in inches
+presentation.slide_height = Inches(5.625)  # Height in inches
+
+# Define slide background and text colors
+black_fill = RGBColor(0, 0, 0)
+yellow_text = RGBColor(255, 255, 0)
+font_name = "源樣黑體 L"  # Default font name
+font_size_main = 32  # Font size for main text
+font_size_bottom = 20  # Font size for bottom text
+p_text = ""  # To store the last encountered P line
+
+# List to collect text chunks
+text_chunks = []
+p_text = []
+p_text_Num = -1
+
+# Iterate through each paragraph in the Word document
+for para in doc.paragraphs:
+    # Skip empty paragraphs
+    if not para.text.strip():
+        continue
+    
+    # Check if the paragraph contains '【'
+    if '【' in para.text.strip():
+        p_text.append(para.text.strip())  # Update the ( text
+        text_chunks.append(para.text.strip())
+        # continue  # Skip adding this line to the slides
+    
+    # Split paragraph into chunks
+    words = para.text.strip().split(' ')
+    max_words_per_line = 12  # Roughly one line of text
+    
+    # Split the text into chunks that represent one line
+    for i in range(0, len(words), max_words_per_line):
+        line_text = ' '.join(words[i:i + max_words_per_line])
+        text_chunks.append(line_text)
+
+p_text.append(" ")
+
+# Add two lines of text per slide
+for i in range(0, len(text_chunks), 2):
+    
+    if text_chunks[i] == p_text[p_text_Num + 1]:
+        p_text_Num += 1
+        continue
+
+    # Add a new slide with a blank layout
+    slide_layout = presentation.slide_layouts[5]  # Blank slide layout
+    slide = presentation.slides.add_slide(slide_layout)
+    
+    # Set slide background to black
+    background = slide.background
+    fill = background.fill
+    fill.solid()
+    fill.fore_color.rgb = black_fill
+    
+    # Add a text box for the first line of text
+    left = Inches(0.5)
+    top = Inches(0.1)  # Top of the slide
+    width = Inches(9)
+    height = Inches(0.5)
+    textbox = slide.shapes.add_textbox(left, top, width, height)
+    text_frame = textbox.text_frame
+    text_frame.text = text_chunks[i]  # First line of text
+    apply_font_settings(
+        text_frame.paragraphs[0], font_name, font_size_main, yellow_text, is_bold=True
+    )
+    text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER  # Center align text
+    
+    # Check if there's a second line of text for the same slide
+    if i + 1 < len(text_chunks):
+        # Add a text box for the second line of text
+        top = Inches(0.7)  # Position the second line below the first one
+        textbox = slide.shapes.add_textbox(left, top, width, height)
+        text_frame = textbox.text_frame
+        text_frame.text = text_chunks[i + 1]  # Second line of text
+        apply_font_settings(
+            text_frame.paragraphs[0], font_name, font_size_main, yellow_text, is_bold=True
+        )
+        text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER  # Center align text
+
+    # Add the last encountered P text to the bottom of the slide if it exists
+    if p_text:
+        bottom_textbox = slide.shapes.add_textbox(left, Inches(5.2), width, height)
+        bottom_text_frame = bottom_textbox.text_frame
+        bottom_text_frame.text = p_text[p_text_Num]  # P line text
+        apply_font_settings(
+            bottom_text_frame.paragraphs[0], font_name, font_size_bottom, yellow_text
+        )
+        bottom_text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER  # Center align text
+
+# Save the PowerPoint presentation
+presentation.save(output_path)
+print(f"Presentation saved to {output_path}")
