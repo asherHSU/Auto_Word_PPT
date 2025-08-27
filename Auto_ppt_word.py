@@ -15,8 +15,9 @@ song_order = [
     "耶穌永遠掌權",
     "禱告的力量"
 ]
-ppt_library_path = "D:/Desktop/church/Auto_ppt_word/2025 別是巴聖教會雲端詩歌PPT" # 我根據你的截圖更新了路徑
+ppt_library_path = "D:/Desktop/church/Auto_ppt_word/2025 別是巴聖教會雲端詩歌PPT"
 output_filename = "D:/Desktop/church/Auto_ppt_word/敬拜大字報.docx"
+output_path = "D:/Desktop/church/Auto_ppt_word/敬拜PPT.pptx"
 
 # --- 程式準備區 ---
 # ▼▼▼ 修改：不再建立全新文件，而是從我們的範本載入 ▼▼▼
@@ -154,7 +155,7 @@ def apply_font_settings(paragraph, font_name, font_size, font_color, is_bold=Fal
     
 #要修改成大字報與PPT輸出的位置
 doc = Document(output_filename)
-output_path = "D:/Desktop/church/Auto_ppt_word/敬拜PPT.pptx"
+
 
 # Create a PowerPoint presentation object
 presentation = Presentation()
