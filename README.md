@@ -46,7 +46,7 @@
 
 2.  **確認輸出檔名 (Confirm Output Filename)**
 
-      * 在同一個檔案中，你可以視需要修改 `output_filename` 變數，例如加入日期：
+      * 在同一個檔案中，你可以視需要修改 `output_filename`和 `output_path` 變數：
         ```python
         # 範例：
         output_filename = "D:/Desktop/church/Auto_ppt_word/敬拜大字報.docx"
@@ -77,3 +77,4 @@
       * 儲存為 `.pptx` 格式。
       * 遵循既有的命名規則（`編號-歌名.pptx`）。
       * 放入對應的子資料夾中。
+
