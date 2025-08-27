@@ -15,13 +15,13 @@ song_order = [
     "耶穌永遠掌權",
     "禱告的力量"
 ]
-ppt_library_path = "D:/Desktop/church/Auto_ppt_word/2024 別是巴聖教會雲端詩歌PPT" # 我根據你的截圖更新了路徑
-output_filename = "敬拜大字報.docx"
+ppt_library_path = "D:/Desktop/church/Auto_ppt_word/2025 別是巴聖教會雲端詩歌PPT" # 我根據你的截圖更新了路徑
+output_filename = "D:/Desktop/church/Auto_ppt_word/敬拜大字報.docx"
 
 # --- 程式準備區 ---
 # ▼▼▼ 修改：不再建立全新文件，而是從我們的範本載入 ▼▼▼
 try:
-    document = Document("template.docx")
+    document = Document("D:\Desktop\church\Auto_ppt_word/template.docx")
 except Exception as e:
     print("錯誤：找不到 'template.docx' 範本檔案，請確認它與Python腳本放在同一個資料夾。")
     print(f"詳細錯誤：{e}")
@@ -31,10 +31,37 @@ except Exception as e:
 # --- 核心功能函式 ---
 # --- 核心功能函式 ---
 def find_ppt_path(root_path, song_title):
+    """
+    升級版搜尋：從檔名中提取出乾淨的標題，進行精準比對。
+    """
     for dirpath, _, filenames in os.walk(root_path):
         for filename in filenames:
-            if (filename.endswith(".pptx") or filename.endswith(".ppt")) and song_title in filename:
+            # 先確認是PPT檔案
+            if not (filename.lower().endswith(".pptx") or filename.lower().endswith(".ppt")):
+                continue
+
+            # 1. 去除副檔名，取得乾淨的檔名主幹 (例如 "1001-神正在這裡")
+            name_stem = os.path.splitext(filename)[0]
+
+            # 2. 從檔名主幹中，分離出真正的歌曲標題
+            title_from_file = ""
+            # 我們假設編號和歌名是用 '-' 或 ' ' (空格) 分隔
+            if '-' in name_stem:
+                # 從第一個 '-' 後面取所有文字作為標題
+                title_from_file = name_stem.split('-', 1)[-1].strip()
+            elif ' ' in name_stem:
+                # 從第一個 ' ' 後面取所有文字作為標題
+                title_from_file = name_stem.split(' ', 1)[-1].strip()
+            else:
+                # 如果檔名中沒有分隔符，就認為整個檔名都是標題
+                title_from_file = name_stem.strip()
+            
+            # 3. 進行精準的「完全等於」比對
+            if title_from_file == song_title:
+                # 只有在完全相符時，才回傳路徑
                 return os.path.join(dirpath, filename)
+
+    # 如果整個迴圈跑完都沒找到完全相符的，就回傳 None
     return None
 
 # ▼▼▼ 修正一：修正 clean_text 的過濾規則，不再移除換行符號 ▼▼▼
@@ -127,7 +154,7 @@ def apply_font_settings(paragraph, font_name, font_size, font_color, is_bold=Fal
     
 #要修改成大字報與PPT輸出的位置
 doc = Document(output_filename)
-output_path = "敬拜PPT.pptx"
+output_path = "D:/Desktop/church/Auto_ppt_word/敬拜PPT.pptx"
 
 # Create a PowerPoint presentation object
 presentation = Presentation()
@@ -139,7 +166,7 @@ presentation.slide_height = Inches(5.625)  # Height in inches
 # Define slide background and text colors
 black_fill = RGBColor(0, 0, 0)
 yellow_text = RGBColor(255, 255, 0)
-font_name = "源樣黑體 L"  # Default font name
+font_name = "微軟正黑體"  # Default font name
 font_size_main = 32  # Font size for main text
 font_size_bottom = 20  # Font size for bottom text
 p_text = ""  # To store the last encountered P line
