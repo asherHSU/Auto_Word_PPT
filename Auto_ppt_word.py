@@ -9,13 +9,13 @@ from pptx import Presentation
 
 # --- 使用者設定區 ---
 song_order = [
-    "將天敞開",
-    "在這裡",
-    "我們的神",
-    "耶穌永遠掌權",
-    "禱告的力量"
+    "叫我抬起頭的神",
+    "永恆唯一的盼望",
+    "耶穌的名",
+    "你愛永不變",
+    "成為神蹟的器皿"
 ]
-ppt_library_path = "D:/Desktop/church/Auto_ppt_word/2025 別是巴聖教會雲端詩歌PPT"
+ppt_library_path = "D:\Desktop\church\Auto_ppt_word/2025 別是巴聖教會雲端詩歌PPT修"
 output_filename = "D:/Desktop/church/Auto_ppt_word/敬拜大字報.docx"
 output_path = "D:/Desktop/church/Auto_ppt_word/敬拜PPT.pptx"
 
