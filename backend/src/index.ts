@@ -163,7 +163,11 @@ app.get('/api/songs', async (req, res) => {
     const collection = db.collection(COLLECTION_NAME);
 
     const { id, name } = req.query;
-    let query: any = {};
+    interface SongQuery { 
+        id?: number; 
+        name?: string | { $regex: string; $options?: string }; 
+    }
+    let query: SongQuery = {};
 
     if (id) {
       const parsedId = parseInt(id as string);
@@ -211,7 +215,9 @@ app.post('/api/songs', authenticateToken, async (req: AuthRequest, res: Response
 
     const result = await collection.insertOne(newSong);
     logger.info(`User ${req.user?.id} added new song: ${JSON.stringify(newSong)}`);
-    res.status(201).json(result.ops[0]);
+    // Find the newly inserted document to return it with _id
+    const insertedDocument = await collection.findOne({ _id: result.insertedId });
+    res.status(201).json(insertedDocument);
   } catch (error) {
     logger.error('Error adding song:', error);
     res.status(500).json({ message: 'Internal Server Error' });
