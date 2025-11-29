@@ -1,3 +1,8 @@
 python-pptx
 python-docx
 pywin32
+pandas
+openpyxl
+fastapi
+uvicorn
+requests
