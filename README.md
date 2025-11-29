@@ -84,52 +84,55 @@
 
 為了將此專案擴展為一個功能完整的網站，建議採用前後端分離的架構。以下是建議的開發流程：
 
-### 第一階段：後端 API 開發 (使用 Python & FastAPI)
+### 第一階段：後端 API 開發 (使用 Node.js & Express.js & MongoDB)
 
 後端的職責是處理核心邏輯：管理詩歌資料、提供搜尋功能、以及生成最終的 PPT 和 Word 檔案。
 
-1.  **資料庫建立與初始化:**
-    *   讀取 `2025別是巴修正詩歌清單.xlsx` 檔案，將詩歌的編號、名稱、專輯等資訊轉換為結構化數據（例如：JSON 檔案或 SQLite 資料庫）。這將是搜尋功能的基礎。
-    *   建立一個腳本，在後端服務啟動時載入這些資料。
+  - [x] 1.  **資料庫建立與初始化 (MongoDB):**
+    - [x] 在本地端或 NAS 的 Docker 中啟動 MongoDB。
+    - [x] 讀取 `2025別是巴修正詩歌清單.xlsx` 檔案，並將詩歌資訊匯入到 MongoDB 資料庫的 `songs` collection 中。
+    - [x] 建立一個腳本 (`backend/src/import-db.ts`)，以便在需要時重新匯入資料。
 
-2.  **建立 Web API 框架:**
-    *   使用 FastAPI 建立一個輕量級的 Web 服務。
-    *   修改 `requirements.txt`，加入 `fastapi` 和 `uvicorn`。
+  - [x] 2.  **建立 Web API 框架 (Node.js & Express.js):**
+    - [x] 初始化 Node.js 專案，設定 TypeScript 環境。
+    - [x] 使用 Express.js 建立一個輕量級的 Web 服務。
+    - [x] 安裝必要的 Node.js 依賴套件 (Express, MongoDB driver, TypeScript 相關工具)。
 
-3.  **開發 API 端點 (Endpoints):**
-    *   **`GET /api/songs`**: 提供詩歌搜尋功能。
-        *   允許通過詩歌編號、名稱（支援模糊搜尋）、專輯等參數進行查詢。
-        *   返回一個包含詩歌資訊的 JSON 列表。
-    *   **`POST /api/generate`**: 接收前端發來的詩歌列表，並生成檔案。
-        *   接收一個包含使用者勾選的詩歌 ID 列表的請求。
-        *   調用 `Auto_ppt_word.py` 中現有的核心邏輯，合併對應的 PPT 檔案，並生成 `敬拜大字報.docx`。
-        *   返回生成好的檔案供前端下載。
+  - [x] 3.  **開發 API 端點 (Endpoints):**
+    - [x] **`GET /api/songs`**: 提供詩歌搜尋功能。
+        *   [x] 允許通過詩歌編號、名稱（支援模糊搜尋）等參數進行查詢。
+        *   [x] 從 MongoDB 中獲取資料並返回 JSON 列表。
+    - [x] **`POST /api/generate`**: 接收前端發來的詩歌列表，並生成檔案。
+        *   [x] 接收一個包含使用者選擇的歌曲名稱列表的請求。
+        *   [x] Node.js 後端呼叫 Python 腳本 (`python-backend-legacy/generate_wrapper.py`) 來執行核心的 PPT/Word 生成邏輯。
+        *   [x] 將生成的 Word 和 PPT 文件打包成 ZIP 檔案，並作為回應供前端下載。
 
-4.  **重構現有腳本:**
-    *   將 `Auto_ppt_word.py` 的邏輯重構為可以在 API 端點中被調用的函式，使其更模組化。
+  - [x] 4.  **整合 Python 核心邏輯:**
+    - [x] 將原有的 `Auto_ppt_word.py` 拆分為 `python-backend-legacy/logic.py` (核心邏輯模組) 和 `python-backend-legacy/generate_wrapper.py` (供 Node.js 調用的包裝腳本)。
+    - [x] `generate_wrapper.py` 負責接收 Node.js 傳來的參數，呼叫 `logic.py` 中的生成函數，並返回結果。
 
 ### 第二階段：前端介面開發 (使用 React & Vite)
 
 前端負責提供使用者互動的介面，讓使用者可以輕鬆地搜尋、選擇詩歌並觸發檔案生成。
 
-1.  **專案初始化:**
-    *   使用 Vite 初始化一個新的 React 專案（推薦使用 TypeScript 模板以提高程式碼品質）。
+  - [ ] 1.  **專案初始化:**
+    - [ ] 使用 Vite 初始化一個新的 React 專案（推薦使用 TypeScript 模板以提高程式碼品質）。
 
-2.  **UI/UX 設計與組件開發:**
-    *   **主頁面佈局**: 設計一個包含搜尋框、搜尋結果列表、已選詩歌列表和生成按鈕的介面。
-    *   **`SongItem` 組件**: 用於顯示單一詩歌的資訊（編號、歌名），並提供一個 "加入" 按鈕。
-    *   **`SelectedList` 組件**: 顯示使用者已經選擇的詩歌，並允許調整順序或移除。
+  - [ ] 2.  **UI/UX 設計與組件開發:**
+    - [ ] **主頁面佈局**: 設計一個包含搜尋框、搜尋結果列表、已選詩歌列表和生成按鈕的介面。
+    - [ ] **`SongItem` 組件**: 用於顯示單一詩歌的資訊（編號、歌名），並提供一個 "加入" 按鈕。
+    - [ ] **`SelectedList` 組件**: 顯示使用者已經選擇的詩歌，並允許調整順序或移除。
 
-3.  **狀態管理與 API 整合:**
-    *   使用 React Hooks (如 `useState`, `useEffect`) 或狀態管理工具 (如 Zustand) 來管理搜尋關鍵字、搜尋結果、已選詩歌列表等狀態。
-    *   當使用者在搜尋框輸入時，調用後端的 `GET /api/songs` API 來獲取並顯示結果。
-    *   當使用者點擊 "生成 PPT/Word" 按鈕時，將已選詩歌列表的 ID 發送到後端的 `POST /api/generate` API。
-    *   處理 API 回應，觸發瀏覽器下載後端生成好的檔案。
+  - [ ] 3.  **狀態管理與 API 整合:**
+    - [ ] 使用 React Hooks (如 `useState`, `useEffect`) 或狀態管理工具 (如 Zustand) 來管理搜尋關鍵字、搜尋結果、已選詩歌列表等狀態。
+    - [ ] 當使用者在搜尋框輸入時，調用後端的 `GET /api/songs` API 來獲取並顯示結果。
+    - [ ] 當使用者點擊 "生成 PPT/Word" 按鈕時，將已選詩歌列表的 ID 發送到後端的 `POST /api/generate` API。
+    *   [ ] 處理 API 回應，觸發瀏覽器下載後端生成好的檔案。
 
-4.  **使用者體驗優化:**
-    *   在 API 請求期間顯示讀取中 (Loading) 的指示。
-    *   處理 API 錯誤，並向使用者顯示友善的錯誤訊息。
-    *   美化介面樣式，可以使用 CSS 框架如 Tailwind CSS 或 Material-UI。
+  - [ ] 4.  **使用者體驗優化:**
+    - [ ] 在 API 請求期間顯示讀取中 (Loading) 的指示。
+    - [ ] 處理 API 錯誤，並向使用者顯示友善的錯誤訊息。
+    *   [ ] 美化介面樣式，可以使用 CSS 框架如 Tailwind CSS 或 Material-UI。
 
 ### 第三階段：整合與部署
 

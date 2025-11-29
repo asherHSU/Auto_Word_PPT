@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      JWT_SECRET: supersecretjwtkey # Change this in production!
+    depends_on:
+      - mongo
+    volumes:
+      - ./output:/app/backend/output # Mount output directory
+      - ./resources:/app/backend/resources # Mount resources directory
+  
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:

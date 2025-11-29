@@ -1,0 +1,13 @@
+--- 階段一：提取歌詞資料 ---
+正在處理歌曲: 來歡呼來讚美...
+  > 找到了: 1018-來歡呼來讚美.pptx
+正在處理歌曲: 將天敞開...
+  > 找到了: 747-將天敞開.pptx
+正在處理歌曲: 神掌權...
+  > 找到了: 1281-神掌權.pptx
+--- 歌詞資料提取完成 ---
+--- 階段二：生成 Word 大字報 ---
+--- Word 大字報已成功儲存至 'C:\Users\aaaa3\AppData\Local\Temp\tmpv4becslc\敬拜大字報.docx' ---
+--- 階段三：生成投影用 PPT ---
+--- 投影用 PPT 已成功儲存至 'C:\Users\aaaa3\AppData\Local\Temp\tmpv4becslc\敬拜PPT.pptx' ---
+INFO:     127.0.0.1:12973 - "POST /api/generate HTTP/1.1" 200 OK
