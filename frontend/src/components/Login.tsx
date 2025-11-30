@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { Box, TextField, Button, Typography, Alert, CircularProgress } from '@mui/material';
+import LoginIcon from '@mui/icons-material/Login';
 
 interface LoginProps {
   onLoginSuccess: (token: string) => void;
@@ -7,48 +9,77 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
+  const API_URL = import.meta.env.VITE_API_URL || '';
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage(null);
+
     try {
-      const response = await fetch(`${process.env.VITE_API_URL}/api/login`, {
+      const response = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
       const data = await response.json();
+      
       if (response.ok && data.token) {
-        setMessage('Login successful!');
         onLoginSuccess(data.token);
       } else {
-        setMessage(data.message || 'Login failed.');
+        setMessage({ type: 'error', text: data.message || '登入失敗，請檢查帳號密碼。' });
       }
     } catch (error) {
-      setMessage('Network error. Please try again.');
-      console.error('Login error:', error);
+      setMessage({ type: 'error', text: '無法連接伺服器，請稍後再試。' });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div>
-      <h2>Login</h2>
-      <input
-        type="text"
-        placeholder="Username"
+    <Box component="form" onSubmit={handleLogin} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography variant="h6" align="center" gutterBottom>
+        歡迎回來
+      </Typography>
+      
+      <TextField
+        label="帳號"
+        variant="outlined"
+        fullWidth
         value={username}
         onChange={(e) => setUsername(e.target.value)}
+        required
       />
-      <input
+      <TextField
+        label="密碼"
         type="password"
-        placeholder="Password"
+        variant="outlined"
+        fullWidth
         value={password}
         onChange={(e) => setPassword(e.target.value)}
+        required
       />
-      <button onClick={handleLogin}>Login</button>
-      {message && <p>{message}</p>}
-    </div>
+      
+      <Button 
+        type="submit" 
+        variant="contained" 
+        size="large" 
+        fullWidth 
+        startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <LoginIcon />}
+        disabled={loading}
+      >
+        {loading ? '登入中...' : '登入'}
+      </Button>
+
+      {message && (
+        <Alert severity={message.type} sx={{ mt: 1 }}>
+          {message.text}
+        </Alert>
+      )}
+    </Box>
   );
 };
 

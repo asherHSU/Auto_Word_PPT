@@ -1,331 +1,223 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { MongoClient, ObjectId } from 'mongodb';
 import * as path from 'path';
 import * as fs from 'fs';
-import { generateFiles } from './generator';
-import winston from 'winston'; // Import winston
-import bcrypt from 'bcryptjs'; // Import bcryptjs
-import jwt from 'jsonwebtoken'; // Import jsonwebtoken
-import { Request, Response, NextFunction } from 'express'; // Import types for express
+import multer from 'multer';
+import cors from 'cors'; 
+import morgan from 'morgan';
+// 🔄 新增引入 clearFileCache
+import { generateFiles, extractSongData, findPptPath, SongData, SongInput, clearFileCache } from './generator';
+import winston from 'winston';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 const app = express();
 const port = 3000;
 
-// --- Winston Logger Configuration ---
+// ... (中間設定保持不變) ...
+const PPT_LIBRARY_PATH = path.join(__dirname, '..', '..', "resources", "ppt_library");
+if (!fs.existsSync(PPT_LIBRARY_PATH)) {
+    fs.mkdirSync(PPT_LIBRARY_PATH, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, PPT_LIBRARY_PATH)
+  },
+  filename: function (req, file, cb) {
+    file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    cb(null, file.originalname);
+  }
+});
+const upload = multer({ storage: storage });
+
 const logger = winston.createLogger({
   level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(({ timestamp, level, message }) => {
-      return `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-    })
-  ),
-  transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'combined.log' }),
-  ],
+  format: winston.format.json(),
+  transports: [new winston.transports.Console()],
 });
 
-// Middleware to parse JSON request bodies
-app.use(express.json());
+app.use(cors()); 
+app.use(morgan('dev')); 
+app.use(express.json({ limit: '50mb' })); 
 
-// --- MongoDB Configuration ---
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
 const DB_NAME = 'song_presentation';
 const COLLECTION_NAME = 'songs';
-const USERS_COLLECTION_NAME = 'users'; // New collection for users
-
+const USERS_COLLECTION_NAME = 'users';
 let dbClient: MongoClient;
 
 async function connectToMongo() {
-  dbClient = new MongoClient(MONGO_URI);
-  await dbClient.connect();
-  logger.info('Connected to MongoDB');
+  try {
+    dbClient = new MongoClient(MONGO_URI);
+    await dbClient.connect();
+    logger.info('Connected to MongoDB');
+  } catch (error) {
+    logger.error('Failed to connect to MongoDB', error);
+  }
 }
+connectToMongo();
 
-// Connect to MongoDB on application startup
-connectToMongo().catch((error) => logger.error('Failed to connect to MongoDB:', error));
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 
-// --- JWT Secret (Ideally from environment variables) ---
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretjwtkey'; // THIS SHOULD BE A STRONG, RANDOM SECRET!
-
-// --- User Interface ---
-interface User {
-  _id?: ObjectId;
-  username: string;
-  password: string;
-}
-
-// --- Middleware for JWT Verification ---
 interface AuthRequest extends Request {
   user?: { id: string };
 }
 
 const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-
-  if (!token) {
-    logger.warn('Authentication attempt without token.');
-    return res.status(401).json({ message: 'Authentication token required.' });
-  }
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ message: 'Authentication required' });
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      logger.warn('Failed authentication: Invalid token.');
-      return res.status(403).json({ message: 'Invalid or expired token.' });
-    }
+    if (err) return res.status(403).json({ message: 'Invalid token' });
     req.user = user as { id: string };
     next();
   });
 };
 
-// --- Authentication Endpoints ---
-
-// Register a new user
-app.post('/api/register', async (req, res) => {
-  try {
-    const db = dbClient.db(DB_NAME);
-    const usersCollection = db.collection<User>(USERS_COLLECTION_NAME);
-    const { username, password } = req.body;
-
-    if (!username || typeof username !== 'string' || username.trim() === '' ||
-        !password || typeof password !== 'string' || password.trim() === '') {
-      return res.status(400).json({ message: 'Username and password are required and must be non-empty strings.' });
-    }
-
-    const existingUser = await usersCollection.findOne({ username: username.trim() });
-    if (existingUser) {
-      logger.warn(`Registration attempt for existing username: ${username}`);
-      return res.status(409).json({ message: 'Username already exists.' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password.trim(), 10);
-    const newUser: User = {
-      username: username.trim(),
-      password: hashedPassword,
-    };
-
-    const result = await usersCollection.insertOne(newUser);
-    logger.info(`User registered: ${newUser.username}`);
-    res.status(201).json({ message: 'User registered successfully.', userId: result.insertedId });
-  } catch (error) {
-    logger.error('Error during user registration:', error);
-    res.status(500).json({ message: 'Internal Server Error' });
-  }
-});
-
-// Login user
+// ... (API Routes: login, register 保持不變) ...
 app.post('/api/login', async (req, res) => {
-  try {
-    const db = dbClient.db(DB_NAME);
-    const usersCollection = db.collection<User>(USERS_COLLECTION_NAME);
-    const { username, password } = req.body;
-
-    if (!username || typeof username !== 'string' || username.trim() === '' ||
-        !password || typeof password !== 'string' || password.trim() === '') {
-      return res.status(400).json({ message: 'Username and password are required.' });
-    }
-
-    const user = await usersCollection.findOne({ username: username.trim() });
-    if (!user) {
-      logger.warn(`Login attempt for non-existent user: ${username}`);
-      return res.status(400).json({ message: 'Invalid credentials.' });
-    }
-
-    const isMatch = await bcrypt.compare(password.trim(), user.password);
-    if (!isMatch) {
-      logger.warn(`Login attempt with incorrect password for user: ${username}`);
-      return res.status(400).json({ message: 'Invalid credentials.' });
-    }
-
-    const token = jwt.sign({ id: user._id?.toHexString() }, JWT_SECRET, { expiresIn: '1h' });
-    logger.info(`User logged in: ${username}`);
-    res.json({ token });
-  } catch (error) {
-    logger.error('Error during user login:', error);
-    res.status(500).json({ message: 'Internal Server Error' });
+  const { username, password } = req.body;
+  if (!dbClient) return res.status(500).json({ message: 'Database not connected' });
+  
+  const db = dbClient.db(DB_NAME);
+  const user = await db.collection(USERS_COLLECTION_NAME).findOne({ username });
+  
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(400).json({ message: 'Invalid credentials' });
   }
+  
+  const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '24h' });
+  res.json({ token, username: user.username });
 });
 
-// --- API Endpoints ---
+app.post('/api/register', async (req, res) => {
+    const { username, password } = req.body;
+    if (!dbClient) return res.status(500).json({ message: 'Database not connected' });
 
-// Root endpoint
-app.get('/', (req, res) => {
-  res.send({ message: 'Welcome to the Node.js API for Auto PPT Word' });
+    const db = dbClient.db(DB_NAME);
+    const existing = await db.collection(USERS_COLLECTION_NAME).findOne({ username });
+    if(existing) return res.status(409).json({ message: 'User exists' });
+    
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await db.collection(USERS_COLLECTION_NAME).insertOne({ username, password: hashedPassword });
+    res.json({ message: 'Admin created' });
 });
 
-// Search songs endpoint
+// 1. Get Songs (With Status Check - Optimized)
 app.get('/api/songs', async (req, res) => {
   try {
+    if (!dbClient) return res.status(500).json({ message: 'Database not connected' });
+    
     const db = dbClient.db(DB_NAME);
-    const collection = db.collection(COLLECTION_NAME);
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const name = req.query.name as string;
 
-    const { id, name } = req.query;
-    interface SongQuery { 
-        id?: number; 
-        name?: string | { $regex: string; $options?: string }; 
-    }
-    let query: SongQuery = {};
+    let query: any = {};
+    if (name) query.name = { $regex: name, $options: 'i' };
 
-    if (id) {
-      const parsedId = parseInt(id as string);
-      if (isNaN(parsedId) || parsedId <= 0) {
-        return res.status(400).json({ message: 'If provided, song ID must be a positive number.' });
-      }
-      query.id = parsedId;
-    }
+    const total = await db.collection(COLLECTION_NAME).countDocuments(query);
+    const songs = await db.collection(COLLECTION_NAME)
+      .find(query)
+      .sort({ id: 1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .toArray();
 
-    if (name) {
-      if (typeof name !== 'string' || name.trim() === '') {
-        return res.status(400).json({ message: 'If provided, song name must be a non-empty string.' });
-      }
-      query.name = { $regex: name, $options: 'i' }; // Case-insensitive substring match
-    }
+    // Parallel File Check using Cached findPptPath
+    const songsWithStatus = await Promise.all(songs.map(async (song) => {
+        // @ts-ignore
+        const filePath = await findPptPath(PPT_LIBRARY_PATH, song);
+        return {
+            ...song,
+            hasFile: !!filePath
+        };
+    }));
 
-    const songs = await collection.find(query).toArray();
-    logger.info(`Found ${songs.length} songs for query: ${JSON.stringify(query)}`);
-    res.json(songs);
-  } catch (error) {
-    logger.error('Error searching songs:', error);
-    res.status(500).json({ message: 'Internal Server Error' });
-  }
-});
-
-// Add a new song
-app.post('/api/songs', authenticateToken, async (req: AuthRequest, res: Response) => {
-  try {
-    const db = dbClient.db(DB_NAME);
-    const collection = db.collection(COLLECTION_NAME);
-    const { name, id } = req.body;
-
-    if (!name || typeof name !== 'string' || name.trim() === '') {
-      return res.status(400).json({ message: 'Song name is required and must be a non-empty string.' });
-    }
-
-    if (id !== undefined && (isNaN(parseInt(id)) || parseInt(id) <= 0)) {
-      return res.status(400).json({ message: 'If provided, song ID must be a positive number.' });
-    }
-
-    const newSong = {
-      id: id ? parseInt(id) : await collection.countDocuments() + 1, // Simple auto-increment for ID
-      name: name.trim(),
-    };
-
-    const result = await collection.insertOne(newSong);
-    logger.info(`User ${req.user?.id} added new song: ${JSON.stringify(newSong)}`);
-    // Find the newly inserted document to return it with _id
-    const insertedDocument = await collection.findOne({ _id: result.insertedId });
-    res.status(201).json(insertedDocument);
-  } catch (error) {
-    logger.error('Error adding song:', error);
-    res.status(500).json({ message: 'Internal Server Error' });
-  }
-});
-
-// Update a song by ID
-app.put('/api/songs/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
-  try {
-    const db = dbClient.db(DB_NAME);
-    const collection = db.collection(COLLECTION_NAME);
-    const songId = parseInt(req.params.id);
-    const { name } = req.body;
-
-    if (isNaN(songId)) {
-      return res.status(400).json({ message: 'Invalid song ID provided.' });
-    }
-
-    if (!name || typeof name !== 'string' || name.trim() === '') {
-      return res.status(400).json({ message: 'Song name is required and must be a non-empty string.' });
-    }
-
-    const result = await collection.updateOne(
-      { id: songId },
-      { $set: { name: name.trim() } }
-    );
-
-    if (result.matchedCount === 0) {
-      logger.warn(`User ${req.user?.id} attempted to update non-existent song with ID: ${songId}`);
-      return res.status(404).json({ message: 'Song not found.' });
-    }
-
-    const updatedSong = await collection.findOne({ id: songId });
-    logger.info(`User ${req.user?.id} updated song with ID ${songId}: ${JSON.stringify(updatedSong)}`);
-    res.json(updatedSong);
-  } catch (error) {
-    logger.error('Error updating song:', error);
-    res.status(500).json({ message: 'Internal Server Error' });
-  }
-});
-
-// Delete a song by ID
-app.delete('/api/songs/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
-  try {
-    const db = dbClient.db(DB_NAME);
-    const collection = db.collection(COLLECTION_NAME);
-    const songId = parseInt(req.params.id);
-
-    if (isNaN(songId)) {
-      return res.status(400).json({ message: 'Invalid song ID provided.' });
-    }
-
-    const result = await collection.deleteOne({ id: songId });
-
-    if (result.deletedCount === 0) {
-      logger.warn(`User ${req.user?.id} attempted to delete non-existent song with ID: ${songId}`);
-      return res.status(404).json({ message: 'Song not found.' });
-    }
-
-    logger.info(`User ${req.user?.id} deleted song with ID: ${songId}`);
-    res.status(204).send(); // No content to send back for a successful deletion
-  } catch (error) {
-    logger.error('Error deleting song:', error);
-    res.status(500).json({ message: 'Internal Server Error' });
-  }
-});
-
-// Generate files endpoint (protected)
-app.post('/api/generate', authenticateToken, async (req: AuthRequest, res: Response) => {
-  try {
-    const { songs } = req.body; // Expects an array of song titles
-    if (!songs || !Array.isArray(songs) || songs.length === 0) {
-      return res.status(400).json({ message: 'Request body must contain a non-empty array of song titles.' });
-    }
-
-    // Validate each song title in the array
-    for (const songTitle of songs) {
-      if (typeof songTitle !== 'string' || songTitle.trim() === '') {
-        return res.status(400).json({ message: 'All song titles in the array must be non-empty strings.' });
-      }
-    }
-
-    logger.info(`User ${req.user?.id} generating files for songs: ${JSON.stringify(songs)}`);
-    const zipPath = await generateFiles(songs);
-    logger.info('Generated ZIP path:', zipPath);
-
-    if (!fs.existsSync(zipPath)) {
-      logger.error('Generated ZIP file does not exist:', zipPath);
-      return res.status(500).json({ message: 'Generated ZIP file not found.' });
-    }
-
-    // Send the zip file as a response
-    res.download(zipPath, '敬拜資源.zip', (err) => {
-      if (err) {
-        logger.error('Error sending file:', err);
-      }
-      // Clean up the generated zip file after sending
-      fs.unlinkSync(zipPath);
-      logger.info(`Cleaned up generated ZIP file: ${zipPath}`);
+    res.json({
+        data: songsWithStatus,
+        pagination: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit)
+        }
     });
-
   } catch (error) {
-    logger.error('Error in /api/generate:', error);
-    res.status(500).json({ message: 'Internal Server Error' });
+    logger.error(error);
+    res.status(500).json({ message: 'Error fetching songs' });
   }
 });
 
-// Start the server
+app.post('/api/preview', async (req, res) => {
+    const { songs } = req.body;
+    if (!songs || !Array.isArray(songs)) return res.status(400).json({ message: 'Invalid input' });
+
+    try {
+        const data = await extractSongData(songs, PPT_LIBRARY_PATH);
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({ message: 'Preview failed' });
+    }
+});
+
+app.post('/api/generate', async (req, res) => {
+    const { songs, songData } = req.body; 
+    try {
+        let input = songData || songs;
+        if (!input || !Array.isArray(input) || input.length === 0) {
+             return res.status(400).json({ message: 'Missing songs data' });
+        }
+
+        const zipPath = await generateFiles(input);
+        res.download(zipPath, '敬拜資源.zip', (err) => {
+            if (!err && fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+        });
+    } catch (error) {
+        logger.error(error);
+        res.status(500).json({ message: 'Generation failed' });
+    }
+});
+
+// 4. Upload Route (Updated to clear cache)
+app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+    logger.info(`File uploaded: ${req.file.originalname}`);
+    
+    // 🔄 關鍵：上傳後清除快取，強制下次讀取重新掃描
+    clearFileCache();
+    
+    res.json({ message: 'File uploaded successfully', filename: req.file.originalname });
+});
+
+// 5. CRUD Operations
+app.post('/api/songs', authenticateToken, async (req, res) => {
+    const db = dbClient.db(DB_NAME);
+    const { name } = req.body;
+    const lastSong = await db.collection(COLLECTION_NAME).find().sort({id: -1}).limit(1).toArray();
+    const newId = (lastSong[0]?.id || 0) + 1;
+    
+    await db.collection(COLLECTION_NAME).insertOne({ id: newId, name });
+    res.json({ message: 'Song added', id: newId });
+});
+
+app.put('/api/songs/:id', authenticateToken, async (req, res) => {
+    const db = dbClient.db(DB_NAME);
+    const id = parseInt(req.params.id);
+    const { name } = req.body;
+    await db.collection(COLLECTION_NAME).updateOne({ id }, { $set: { name } });
+    res.json({ message: 'Song updated' });
+});
+
+app.delete('/api/songs/:id', authenticateToken, async (req, res) => {
+    const db = dbClient.db(DB_NAME);
+    const id = parseInt(req.params.id);
+    await db.collection(COLLECTION_NAME).deleteOne({ id });
+    res.json({ message: 'Song deleted' });
+});
+
 app.listen(port, () => {
-  logger.info(`Server is running on port ${port}`);
+  console.log(`Server running on port ${port}`);
 });

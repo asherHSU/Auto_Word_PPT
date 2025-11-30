@@ -1,2 +1,4 @@
 [2025-11-29T17:58:28.108Z] INFO: Server is running on port 3000
 [2025-11-29T17:58:28.175Z] INFO: Connected to MongoDB
+{"level":"info","message":"Connected to MongoDB","timestamp":"2025-11-29T22:21:48.976Z"}
+{"level":"info","message":"Connected to MongoDB","timestamp":"2025-11-29T22:47:39.743Z"}

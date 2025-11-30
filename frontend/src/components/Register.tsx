@@ -1,51 +1,84 @@
 import React, { useState } from 'react';
+import { Box, TextField, Button, Typography, Alert, CircularProgress } from '@mui/material';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
 const Register: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleRegister = async () => {
+  const API_URL = import.meta.env.VITE_API_URL || '';
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage(null);
+
     try {
-      const response = await fetch(`${process.env.VITE_API_URL}/api/register`, {
+      const response = await fetch(`${API_URL}/api/register`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
       const data = await response.json();
+      
       if (response.ok) {
-        setMessage('Registration successful! Please login.');
+        setMessage({ type: 'success', text: '註冊成功！請切換至登入頁面。' });
         setUsername('');
         setPassword('');
       } else {
-        setMessage(data.message || 'Registration failed.');
+        setMessage({ type: 'error', text: data.message || '註冊失敗。' });
       }
     } catch (error) {
-      setMessage('Network error. Please try again.');
-      console.error('Registration error:', error);
+      setMessage({ type: 'error', text: '無法連接伺服器。' });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div>
-      <h2>Register</h2>
-      <input
-        type="text"
-        placeholder="Username"
+    <Box component="form" onSubmit={handleRegister} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography variant="h6" align="center" gutterBottom>
+        建立新管理員
+      </Typography>
+
+      <TextField
+        label="新帳號"
+        variant="outlined"
+        fullWidth
         value={username}
         onChange={(e) => setUsername(e.target.value)}
+        required
       />
-      <input
+      <TextField
+        label="新密碼"
         type="password"
-        placeholder="Password"
+        variant="outlined"
+        fullWidth
         value={password}
         onChange={(e) => setPassword(e.target.value)}
+        required
       />
-      <button onClick={handleRegister}>Register</button>
-      {message && <p>{message}</p>}
-    </div>
+      
+      <Button 
+        type="submit" 
+        variant="contained" 
+        color="secondary"
+        size="large" 
+        fullWidth 
+        startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <PersonAddIcon />}
+        disabled={loading}
+      >
+        {loading ? '註冊中...' : '註冊'}
+      </Button>
+
+      {message && (
+        <Alert severity={message.type} sx={{ mt: 1 }}>
+          {message.text}
+        </Alert>
+      )}
+    </Box>
   );
 };
 
