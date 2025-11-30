@@ -203,7 +203,7 @@ elif MODE == "generate":
             apply_font_settings(p_lyrics, FONT_NAME, 32, YELLOW_TEXT, True)
 
             # Footer with song title at the bottom
-            tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(5.1), Inches(9), Inches(0.1-=))
+            tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(5.1), Inches(9), Inches(0.1))
             tf_title = tb_title.text_frame
             p_title = tf_title.paragraphs[0]
             p_title.text = f"《{title}》"
