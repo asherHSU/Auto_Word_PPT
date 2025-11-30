@@ -103,12 +103,17 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
   const filteredSongs = allSongs.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    // 🛠️ 修改 1: 設定整體高度為螢幕高度的 75%，讓區塊變大變滿
-    <Box sx={{ height: '75vh' }}>
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={4} sx={{ height: '100%' }}>
+    // 🛠️ 修改：高度改為 100%，因為父容器 (App.tsx) 已經透過 flex 幫我們撐開了
+    <Box sx={{ height: '100%' }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ height: '100%' }}>
         
-        {/* 左側：搜尋與選擇 */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* 左側：搜尋區塊 (固定寬度，讓右邊可以最大化) */}
+        <Box sx={{ 
+          width: { xs: '100%', md: '360px' }, 
+          flexShrink: 0, 
+          display: 'flex', 
+          flexDirection: 'column' 
+        }}>
           <Paper 
             variant="outlined" 
             sx={{ 
@@ -118,7 +123,8 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
               flexDirection: 'column',
               bgcolor: '#ffffff',
               borderRadius: 3,
-              boxShadow: '0 2px 12px rgba(0,0,0,0.05)'
+              boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
+              overflow: 'hidden' // 防止外溢
             }}
           >
             <Typography variant="h6" gutterBottom fontWeight="bold" color="primary" sx={{ borderBottom: '2px solid #3498db', pb: 1, mb: 2, display: 'inline-block', width: 'fit-content' }}>
@@ -136,7 +142,7 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
               sx={{ mb: 2 }}
             />
             
-            {/* 🛠️ 修改 2: 移除 maxHeight，讓列表自動填滿剩餘空間 (flexGrow: 1) */}
+            {/* 列表自動填滿高度 */}
             <List sx={{ flexGrow: 1, overflow: 'auto', border: '1px solid #eee', borderRadius: 2, bgcolor: '#fafafa' }}>
               {filteredSongs.slice(0, 100).map(song => {
                 const isSelected = selectedSongs.some(s => s.id === song.id);
@@ -169,8 +175,13 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
           </Paper>
         </Box>
 
-        {/* 右側：已選清單 */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* 右側：已選清單 (佔滿剩餘所有空間) */}
+        <Box sx={{ 
+          flex: 1, // 👈 自動填滿剩餘寬度
+          display: 'flex', 
+          flexDirection: 'column',
+          minWidth: 0 
+        }}>
           <Paper 
             variant="outlined" 
             sx={{ 
@@ -181,14 +192,14 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
               bgcolor: '#fffbf2', 
               borderColor: '#ffe0b2',
               borderRadius: 3,
-              boxShadow: '0 2px 12px rgba(0,0,0,0.05)'
+              boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
+              overflow: 'hidden'
             }}
           >
             <Typography variant="h6" gutterBottom fontWeight="bold" color="secondary" sx={{ borderBottom: '2px solid #e67e22', pb: 1, mb: 2, display: 'inline-block', width: 'fit-content' }}>
               2. 已選清單 (生成順序)
             </Typography>
             
-            {/* 🛠️ 修改 3: 移除 maxHeight/minHeight，讓列表自動填滿空間 */}
             <List sx={{ flexGrow: 1, overflow: 'auto', bgcolor: 'white', borderRadius: 2, border: '1px solid #ffe0b2' }}>
               {selectedSongs.map((song, idx) => (
                 <ListItem 
@@ -235,11 +246,11 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
         </Box>
       </Stack>
 
-      {/* Preview Dialog - 加大字體與編輯區 */}
+      {/* Preview Dialog */}
       <Dialog 
         open={isPreviewing} 
         onClose={() => setIsPreviewing(false)} 
-        maxWidth="xl" // 加寬 Dialog
+        maxWidth="xl" 
         fullWidth
         scroll="paper"
       >
@@ -257,7 +268,7 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
         <DialogContent dividers sx={{ backgroundColor: '#f5f5f5', p: 3 }}>
           <Stack direction="row" flexWrap="wrap" gap={3} justifyContent="center">
             {previewData.map((data, idx) => (
-              <Box key={idx} sx={{ flex: '1 1 350px', maxWidth: '600px', minWidth: '350px' }}> {/* 卡片變寬 */}
+              <Box key={idx} sx={{ flex: '1 1 350px', maxWidth: '600px', minWidth: '350px' }}>
                 <Paper sx={{ p: 2, height: '100%', bgcolor: 'white', color: 'text.primary', borderRadius: 2, boxShadow: 1 }}>
                   <Typography variant="h6" gutterBottom color="primary" fontWeight="bold" sx={{ borderBottom: '1px dashed #ccc', pb: 1, mb: 2 }}>
                     {idx + 1}. {data.title}
@@ -265,7 +276,7 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
                   <TextField
                     multiline
                     fullWidth
-                    minRows={10} // 增加行數
+                    minRows={10} 
                     maxRows={15}
                     value={data.lyrics.join('\n')}
                     onChange={(e) => handleLyricsChange(idx, e.target.value)}
@@ -273,7 +284,7 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
                     sx={{ 
                         bgcolor: '#fafafa',
                         '& .MuiInputBase-input': { 
-                            fontSize: '1.1rem', // 編輯區字體加大
+                            fontSize: '1.1rem',
                             lineHeight: 1.6,
                             fontFamily: 'monospace'
                         }
