@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  # 1. 資料庫服務
+  # 1. 資料庫服務 (維持不變)
   mongo:
-    image: mongo:latest
+    image: mongo:4.4
     container_name: church_mongo
     restart: always
     volumes:
@@ -11,9 +11,13 @@ services:
     networks:
       - church-net
 
-  # 2. 後端 API 服務
+  # 2. 後端 API 服務 (改用映像檔)
   backend:
-    build: ./backend
+    # ❌ 移除 build 指令，NAS 不需要原始碼
+    # build: ./backend
+    # ✅ 新增 image 指令，直接從 Docker Hub 下載
+    # 請將 'asher31892774' 替換為您的 Docker Hub 帳號
+    image: asher31892774/church-backend:latest
     container_name: church_backend
     restart: always
     depends_on:
@@ -22,20 +26,22 @@ services:
       - MONGO_URI=mongodb://mongo:27017
       - JWT_SECRET=change_this_to_a_secure_secret_key
     volumes:
-      # ⚠️ 關鍵：將 NAS 上的實體資料夾掛載進去
-      # 請修改左邊的路徑為您 NAS 上的實際路徑
+      # ⚠️ 關鍵：NAS 上只需要這兩個資料夾，不需要程式碼
       - ./resources:/app/resources
       - ./output:/app/output
     networks:
       - church-net
 
-  # 3. 前端網頁服務
+  # 3. 前端網頁服務 (改用映像檔)
   frontend:
-    build: ./frontend
+    # ❌ 移除 build 指令
+    # build: ./frontend
+    # ✅ 新增 image 指令
+    image: asher31892774/church-frontend:latest
     container_name: church_frontend
     restart: always
     ports:
-      - "8080:80" # 左邊是您 NAS 要開放的 Port，您可以改成 80 或其他
+      - "8080:80" 
     depends_on:
       - backend
     networks:

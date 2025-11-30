@@ -29,7 +29,6 @@ import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import QueueMusicIcon from '@mui/icons-material/QueueMusic'; 
 import LibraryMusicIcon from '@mui/icons-material/LibraryMusic'; 
 
-// 🎨 自定義主題
 const theme = createTheme({
   palette: {
     primary: {
@@ -90,7 +89,8 @@ function App() {
     localStorage.removeItem('adminToken');
   };
 
-  const handleAuthTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  // 🛠️ 修正：將 event 改為 _event 或 _，表示忽略此參數
+  const handleAuthTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
   };
 
@@ -163,11 +163,10 @@ function App() {
           {drawerContent}
         </Drawer>
 
-        {/* 🛠️ 主內容區塊修改：padding 縮小，移除 maxWidth */}
         <Box component="main" sx={{ flexGrow: 1, p: 2, bgcolor: '#f4f6f8', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           
           {showLogin && !adminToken ? (
-            <Container sx={{ mt: 8, flex: 1, overflow: 'auto' }}>
+            <Container maxWidth="sm" sx={{ mt: 8, flex: 1, overflow: 'auto' }}>
               <Paper elevation={4} sx={{ p: 4, borderRadius: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
                    <Tabs value={currentTab} onChange={handleAuthTabChange} centered variant="fullWidth" sx={{ width: '100%' }}>
@@ -182,7 +181,6 @@ function App() {
               </Paper>
             </Container>
           ) : (
-            // 🛠️ 頁面容器：寬度 100%，高度自動填滿
             <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               {currentPage === 'generator' && (
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -192,13 +190,13 @@ function App() {
                   <Paper 
                     elevation={0} 
                     sx={{ 
-                      p: 2, // 縮小內距讓內容更寬
+                      p: 2, 
                       borderRadius: 3, 
                       border: '1px solid #e0e0e0',
-                      flex: 1, // 自動填滿剩餘高度
+                      flex: 1, 
                       display: 'flex',
                       flexDirection: 'column',
-                      overflow: 'hidden' // 防止 Paper 本身出現捲軸，交給內部處理
+                      overflow: 'hidden' 
                     }}
                   >
                     <FileGenerator token={adminToken} />

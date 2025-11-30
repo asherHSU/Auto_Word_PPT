@@ -1,18 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box, Paper, TextField, List, ListItem, ListItemText, ListItemSecondaryAction,
+  Box, Paper, TextField, List, ListItem, ListItemText, 
   IconButton, Button, Typography, InputAdornment, Dialog, DialogTitle, 
-  DialogContent, DialogActions, CircularProgress, ListItemButton, Stack, Divider,
-  ListItemIcon
+  DialogContent, DialogActions, CircularProgress, ListItemButton, Stack, ListItemIcon
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import DownloadIcon from '@mui/icons-material/Download';
-import DragIndicatorIcon from '@mui/icons-material/DragIndicator'; // 拖移圖示
-
-// 🟢 引入拖移套件
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 
 interface SongData {
@@ -25,7 +22,7 @@ interface Song {
   name: string;
 }
 
-const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
+const FileGenerator: React.FC<{ token: string | null }> = () => {
   const [allSongs, setAllSongs] = useState<Song[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSongs, setSelectedSongs] = useState<Song[]>([]);
@@ -34,7 +31,6 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
   const [previewData, setPreviewData] = useState<SongData[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 解決 React 18 StrictMode 下 DND 可能出現的問題 (確保 hydration 後再 render DND)
   const [enabled, setEnabled] = useState(false);
   useEffect(() => {
     const animation = requestAnimationFrame(() => setEnabled(true));
@@ -46,10 +42,29 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
 
   const API_URL = import.meta.env.VITE_API_URL || '';
 
+  // 🛠️ 關鍵修正：加強 API 錯誤處理
   useEffect(() => {
     fetch(`${API_URL}/api/songs?limit=2000`)
-      .then(res => res.json())
-      .then(data => setAllSongs(data.data));
+      .then(res => {
+        if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data => {
+        // 確保 data.data 存在且為陣列，否則給空陣列
+        if (data && Array.isArray(data.data)) {
+            setAllSongs(data.data);
+        } else {
+            console.warn("API returned unexpected format:", data);
+            setAllSongs([]);
+        }
+      })
+      .catch(error => {
+        console.error("Failed to fetch songs:", error);
+        // 發生錯誤時，保持空陣列，防止 filter 崩潰
+        setAllSongs([]); 
+      });
   }, []);
 
   const handleAddSong = (song: Song) => {
@@ -62,7 +77,6 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
     setSelectedSongs(selectedSongs.filter(s => s.id !== id));
   };
 
-  // 🟢 處理拖移結束後的邏輯
   const onDragEnd = (result: DropResult) => {
     if (!result.destination) return;
 
@@ -126,13 +140,16 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
     }
   };
 
-  const filteredSongs = allSongs.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  // 確保 allSongs 是陣列再 filter，雙重保險
+  const safeSongs = Array.isArray(allSongs) ? allSongs : [];
+  const filteredSongs = safeSongs.filter(s => 
+    s.name && s.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <Box sx={{ height: '100%' }}>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ height: '100%' }}>
         
-        {/* 左側：搜尋區塊 */}
         <Box sx={{ 
           width: { xs: '100%', md: '360px' }, 
           flexShrink: 0, 
@@ -199,7 +216,6 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
           </Paper>
         </Box>
 
-        {/* 右側：已選清單 (支援拖移排序) */}
         <Box sx={{ 
           flex: 1, 
           display: 'flex', 
@@ -224,7 +240,6 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
               2. 已選清單 (拖移調整順序)
             </Typography>
             
-            {/* 🟢 拖移區塊開始 */}
             {enabled && (
               <DragDropContext onDragEnd={onDragEnd}>
                 <Droppable droppableId="selected-songs">
@@ -248,12 +263,11 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
                                 </IconButton>
                               }
                               sx={{ 
-                                bgcolor: snapshot.isDragging ? '#fff3e0' : 'white', // 拖移時變色
+                                bgcolor: snapshot.isDragging ? '#fff3e0' : 'white', 
                                 transition: 'background-color 0.2s'
                               }}
                             >
                               <ListItemButton sx={{ py: 1.5 }} disableRipple>
-                                {/* 拖移把手 */}
                                 <ListItemIcon 
                                   {...provided.dragHandleProps} 
                                   sx={{ minWidth: 36, cursor: 'grab', color: '#ccc', '&:hover': { color: '#666' } }}
@@ -281,7 +295,6 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
                 </Droppable>
               </DragDropContext>
             )}
-            {/* 拖移區塊結束 */}
 
             <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
                 <Button 
@@ -301,7 +314,6 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
         </Box>
       </Stack>
 
-      {/* Preview Dialog (維持不變) */}
       <Dialog 
         open={isPreviewing} 
         onClose={() => setIsPreviewing(false)} 

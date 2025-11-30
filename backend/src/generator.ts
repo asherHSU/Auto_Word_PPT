@@ -28,25 +28,19 @@ export interface SongData {
   lyrics: string[];
 }
 
-// ==========================================
 // 🚀 第一部分：Node.js 快速檔案掃描 (解決缺檔顯示問題)
-// ==========================================
 
-// 全域快取，避免每次 API 請求都重新掃描硬碟
 let fileCache: { name: string; path: string; normalized: string }[] | null = null;
 
+// 🛠️ 關鍵修正：加入空值檢查
 function normalizeString(str: string): string {
-    // 移除所有非中英數字符，轉小寫
+    if (!str) return ""; // 防止 undefined 導致 crash
     return str.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '').toLowerCase();
 }
 
-/**
- * 建立檔案索引 (只掃描一次硬碟)
- */
 function buildFileCache(rootPath: string) {
     if (!fs.existsSync(rootPath)) return;
 
-    // generatorLogger.info(`📂 Building file cache from: ${rootPath}`);
     const files: { name: string; path: string; normalized: string }[] = [];
     
     function traverse(currentPath: string) {
@@ -71,7 +65,7 @@ function buildFileCache(rootPath: string) {
                 }
             }
         } catch (e) {
-            // 忽略權限錯誤等
+            // ignore
         }
     }
     
@@ -85,9 +79,6 @@ export function clearFileCache() {
     generatorLogger.info('🔄 File cache cleared.');
 }
 
-/**
- * 用於 API 列表狀態檢查 (使用 Node.js 快取，速度快)
- */
 export async function findPptPath(rootPath: string, song: SongInput): Promise<string | null> {
     if (!fileCache) {
         buildFileCache(rootPath);
@@ -95,15 +86,16 @@ export async function findPptPath(rootPath: string, song: SongInput): Promise<st
 
     if (!fileCache) return null;
 
+    // 🛠️ 關鍵修正：確保 song 與 song.name 存在
+    if (!song || !song.name) return null;
+
     const targetName = normalizeString(song.name);
     const idRegex = new RegExp(`^0*${song.id}([^0-9]|$)`);
 
     for (const file of fileCache) {
-        // 1. 優先 ID 比對
         if (idRegex.test(file.name)) {
             return file.path;
         }
-        // 2. 備案 歌名包含比對
         if (file.normalized.includes(targetName)) {
             return file.path;
         }
@@ -112,9 +104,7 @@ export async function findPptPath(rootPath: string, song: SongInput): Promise<st
 }
 
 
-// ==========================================
-// 🐍 第二部分：Python 腳本呼叫 (解決格式錯誤問題)
-// ==========================================
+// 🐍 第二部分：Python 腳本呼叫
 
 async function runPythonScript(mode: 'preview' | 'generate', payload: any, outputDir?: string): Promise<any> {
     const PROJECT_ROOT = path.join(__dirname, '..', '..');
@@ -131,7 +121,6 @@ async function runPythonScript(mode: 'preview' | 'generate', payload: any, outpu
         let stdoutData = '';
         let stderrData = '';
 
-        // 收集輸出
         py.stdout.on('data', (data) => { stdoutData += data.toString(); });
         py.stderr.on('data', (data) => { stderrData += data.toString(); });
 
@@ -142,12 +131,9 @@ async function runPythonScript(mode: 'preview' | 'generate', payload: any, outpu
             }
             
             try {
-                // 解析 Python 的 JSON 輸出
-                // Python 可能會印出一些其他 log，我們要抓最後一行有效的 JSON
                 const lines = stdoutData.trim().split('\n');
                 let result = null;
                 
-                // 倒序尋找最後一個有效的 JSON
                 for (let i = lines.length - 1; i >= 0; i--) {
                     try {
                         const json = JSON.parse(lines[i]);
@@ -170,11 +156,7 @@ async function runPythonScript(mode: 'preview' | 'generate', payload: any, outpu
     });
 }
 
-/**
- * 預覽功能：呼叫 Python 獲取歌詞
- */
 export async function extractSongData(songs: SongInput[] | any[], pptLibraryPath: string): Promise<SongData[]> {
-    // 這裡我們只傳遞必要的 ID 和 Name 給 Python
     const simplifiedSongs = songs.map(s => ({ 
         id: s.id || 0, 
         name: s.name || s.title 
@@ -189,9 +171,6 @@ export async function extractSongData(songs: SongInput[] | any[], pptLibraryPath
     }
 }
 
-/**
- * 生成功能：呼叫 Python 產生檔案並打包
- */
 export async function generateFiles(input: SongInput[] | SongData[]): Promise<string> {
     const PROJECT_ROOT = path.join(__dirname, '..', '..');
     const OUTPUT_DIR = path.join(PROJECT_ROOT, 'output');
@@ -203,10 +182,8 @@ export async function generateFiles(input: SongInput[] | SongData[]): Promise<st
     const outputPptx = path.join(OUTPUT_DIR, "敬拜PPT.pptx");
 
     try {
-        // 呼叫 Python 生成檔案
         await runPythonScript('generate', input, OUTPUT_DIR);
         
-        // 打包 Zip
         const output = fs.createWriteStream(zipPath);
         const archive = archiver('zip', { zlib: { level: 9 } });
 
@@ -219,7 +196,6 @@ export async function generateFiles(input: SongInput[] | SongData[]): Promise<st
             
             archive.pipe(output);
             
-            // 檢查 Python 是否真的生成了檔案
             if (fs.existsSync(outputDocx)) {
                 archive.file(outputDocx, { name: '敬拜大字報.docx' });
             } else {
