@@ -1,41 +1,49 @@
 version: '3.8'
 
 services:
-  backend:
-    build: ./backend
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      MONGO_URI: ${MONGO_URI}
-      JWT_SECRET: ${JWT_SECRET}
-    depends_on:
-      - mongo
-    volumes:
-      - ./output:/app/backend/output # Mount output directory
-      - ./resources:/app/backend/resources # Mount resources directory
-
-  frontend:
-    build: ./frontend
-    ports:
-      - "5173:80" # Default Vite dev server port
-    env_file:
-      - .env
-    environment:
-      VITE_API_URL: ${VITE_API_URL}
-    depends_on:
-      - backend
-    # You might want to mount volumes for development to enable hot-reloading
-    # volumes:
-    #   - ./frontend:/app/frontend
-
+  # 1. 資料庫服務
   mongo:
     image: mongo:latest
-    ports:
-      - "27017:27017"
+    container_name: church_mongo
+    restart: always
     volumes:
-      - mongo-data:/data/db
+      - mongo_data:/data/db
+    networks:
+      - church-net
+
+  # 2. 後端 API 服務
+  backend:
+    build: ./backend
+    container_name: church_backend
+    restart: always
+    depends_on:
+      - mongo
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - JWT_SECRET=change_this_to_a_secure_secret_key
+    volumes:
+      # ⚠️ 關鍵：將 NAS 上的實體資料夾掛載進去
+      # 請修改左邊的路徑為您 NAS 上的實際路徑
+      - ./resources:/app/resources
+      - ./output:/app/output
+    networks:
+      - church-net
+
+  # 3. 前端網頁服務
+  frontend:
+    build: ./frontend
+    container_name: church_frontend
+    restart: always
+    ports:
+      - "8080:80" # 左邊是您 NAS 要開放的 Port，您可以改成 80 或其他
+    depends_on:
+      - backend
+    networks:
+      - church-net
 
 volumes:
-  mongo-data:
+  mongo_data:
+
+networks:
+  church-net:
+    driver: bridge

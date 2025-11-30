@@ -1,32 +1,34 @@
-# Stage 1: Build the application
-FROM node:20-alpine AS builder
+# 使用 Node.js 18 Alpine 作為基底 (輕量、安全)
+FROM node:18-alpine
 
-WORKDIR /app/backend
+# 1. 安裝 Python 3, pip 和建置工具
+# --no-cache 避免暫存檔佔用空間
+# build-base 用於編譯某些可能需要的原生模組
+RUN apk add --no-cache python3 py3-pip build-base
 
-# Copy package.json and package-lock.json
-COPY package*.json ./
+# 設定工作目錄
+WORKDIR /app
 
-# Install development and production dependencies
-RUN npm install
+# 2. 先複製 Python 依賴並安裝 (利用 Docker Cache 機制)
+COPY requirements.txt .
+# --break-system-packages 是因為 Alpine 新版 Python 安全策略，在容器內我們可以直接安裝
+RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
 
-# Copy the rest of the application code
+# 3. 複製 Node.js 依賴並安裝
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# 4. 複製剩餘的所有程式碼 (包含 src, scripts, tsconfig.json 等)
 COPY . .
 
-# Build the TypeScript code
+# 5. 編譯 TypeScript 到 JavaScript
 RUN npm run build
 
-# Stage 2: Create the production-ready image
-FROM node:20-alpine
+# 建立資源與輸出目錄 (確保權限正確)
+RUN mkdir -p resources/ppt_library output
 
-WORKDIR /app/backend
-
-# Copy only production dependencies from builder stage
-COPY --from=builder /app/backend/package.json ./
-COPY --from=builder /app/backend/node_modules/ ./node_modules/
-COPY --from=builder /app/backend/dist ./dist
-
-# Expose the port the app runs on
+# 暴露 Port
 EXPOSE 3000
 
-# Command to run the application
-CMD [ "npm", "start" ]
+# 啟動指令 (指向編譯後的 dist/index.js)
+CMD ["node", "dist/index.js"]
