@@ -5,7 +5,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #282c34;
+  background-color: #FFFFFF;
   color: white;
 }
 
@@ -22,7 +22,7 @@ code {
 }
 
 .App-header {
-  background-color: #282c34;
+  background-color: #FFFFFF;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -52,7 +52,7 @@ input {
   margin: 0.5em;
   border-radius: 5px;
   border: 1px solid #61dafb;
-  background-color: #3a3f4a;
+  background-color: #FFFFFF;
   color: white;
 }
 
@@ -71,7 +71,7 @@ ul {
 }
 
 li {
-  background-color: #3a3f4a;
+  background-color: #FFFFFF;
   margin: 0.5em 0;
   padding: 0.5em;
   border-radius: 5px;

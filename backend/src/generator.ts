@@ -4,9 +4,8 @@ import { Document, Packer, Paragraph, TextRun, ISectionOptions, SectionType } fr
 import PptxGenJS from 'pptxgenjs';
 import archiver from 'archiver';
 import textract from 'textract';
-import winston from 'winston'; // Import winston
+import winston from 'winston';
 
-// --- Winston Logger Configuration for Generator ---
 const generatorLogger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -17,111 +16,157 @@ const generatorLogger = winston.createLogger({
   ),
   transports: [
     new winston.transports.Console(),
-    new winston.transports.File({ filename: 'generator-error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'generator-combined.log' }),
+    new winston.transports.File({ filename: 'generator.log' }),
   ],
 });
 
-// --- Interfaces ---
-interface SongData {
+export interface SongData {
   title: string;
   lyrics: string[];
-  isPptOldFormat: boolean;
-  found: boolean;
+  isPptOldFormat?: boolean;
+  found?: boolean;
 }
 
-// --- Core Functions ---
-
-export async function findPptPath(rootPath: string, songTitle: string): Promise<string | null> {
-  const files = fs.readdirSync(rootPath);
-
-  for (const file of files) {
-    const filePath = path.join(rootPath, file);
-    const stat = fs.statSync(filePath);
-
-    if (stat.isDirectory()) {
-      const result = await findPptPath(filePath, songTitle);
-      if (result) {
-        return result;
-      }
-    } else if (stat.isFile()) {
-      const fileName = path.basename(filePath, path.extname(filePath));
-      const titleFromFile = fileName.includes('-')
-        ? fileName.split('-').slice(1).join('-').trim()
-        : fileName.includes(' ')
-        ? fileName.split(' ').slice(1).join(' ').trim()
-        : fileName.trim();
-
-      if (titleFromFile.toLowerCase() === songTitle.toLowerCase()) {
-        generatorLogger.info(`  > Found PPT for '${songTitle}': ${filePath}`);
-        return filePath;
-      }
-    }
-  }
-
-  return null;
+export interface SongInput {
+    id: number;
+    name: string;
 }
 
 function cleanText(text: string): string {
-  // Removes incompatible XML control characters but keeps newline, carriage return, and tab
   return text.replace(/[\x00-\x08\x0e-\x1f]/g, '');
 }
 
-export async function extractSongData(songOrder: string[], pptLibraryPath: string): Promise<SongData[]> {
-    generatorLogger.info("--- 階段一：提取歌詞資料 ---");
+function normalizeString(str: string): string {
+    return str.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '').toLowerCase();
+}
+
+// 🔥 全域快取 (Global Cache)
+// 儲存掃描到的所有 PPT 檔案資訊，避免重複掃描硬碟
+let fileCache: { name: string; path: string; normalized: string }[] | null = null;
+
+/**
+ * 🔄 清除快取 (Exported Function)
+ * 當有新檔案上傳時呼叫此函式，強制下次搜尋時重新掃描硬碟
+ */
+export function clearFileCache() {
+    fileCache = null;
+    generatorLogger.info('🔄 File cache cleared.');
+}
+
+/**
+ * 建立檔案索引 (只掃描一次硬碟)
+ */
+function buildFileCache(rootPath: string) {
+    generatorLogger.info(`📂 Building file cache from: ${rootPath}`);
+    const files: { name: string; path: string; normalized: string }[] = [];
+    
+    function traverse(currentPath: string) {
+        if (!fs.existsSync(currentPath)) return;
+        const items = fs.readdirSync(currentPath);
+        
+        for (const item of items) {
+            const fullPath = path.join(currentPath, item);
+            try {
+                const stat = fs.statSync(fullPath);
+                if (stat.isDirectory()) {
+                    traverse(fullPath);
+                } else if (stat.isFile()) {
+                    const ext = path.extname(item).toLowerCase();
+                    if (ext === '.pptx' || ext === '.ppt') {
+                        const fileName = path.basename(item, ext);
+                        files.push({
+                            name: fileName,
+                            path: fullPath,
+                            normalized: normalizeString(fileName)
+                        });
+                    }
+                }
+            } catch (e) {
+                // 忽略無法讀取的檔案
+            }
+        }
+    }
+    
+    traverse(rootPath);
+    fileCache = files;
+    generatorLogger.info(`✅ Cache built. Found ${files.length} presentation files.`);
+}
+
+/**
+ * 搜尋 PPT 檔案 (改為使用記憶體快取)
+ */
+export async function findPptPath(rootPath: string, song: SongInput): Promise<string | null> {
+  // 1. 如果快取是空的，先建立快取
+  if (!fileCache) {
+      buildFileCache(rootPath);
+  }
+
+  const targetName = normalizeString(song.name);
+  // Regex: 匹配開頭是 ID，且後面接非數字的字元
+  const idRegex = new RegExp(`^0*${song.id}([^0-9]|$)`);
+
+  // 2. 在記憶體中搜尋 (速度極快)
+  if (fileCache) {
+      for (const file of fileCache) {
+        // 優先：ID 比對
+        if (idRegex.test(file.name)) {
+            return file.path;
+        }
+        // 備案：檔名包含歌名
+        if (file.normalized.includes(targetName)) {
+            return file.path;
+        }
+      }
+  }
+  
+  return null;
+}
+
+export async function extractSongData(songs: SongInput[], pptLibraryPath: string): Promise<SongData[]> {
+    generatorLogger.info(`--- 開始提取資料 (共 ${songs.length} 首) ---`);
     const songsData: SongData[] = [];
 
-    for (const songTitle of songOrder) {
-        generatorLogger.info(`正在處理歌曲: ${songTitle}...`);
-        const pptPath = await findPptPath(pptLibraryPath, songTitle);
+    // 確保快取已建立
+    if (!fileCache) buildFileCache(pptLibraryPath);
 
-        const songInfo: SongData = { title: songTitle, lyrics: [], isPptOldFormat: false, found: false };
+    for (const song of songs) {
+        const songInfo: SongData = { title: song.name, lyrics: [], isPptOldFormat: false, found: false };
+        const pptPath = await findPptPath(pptLibraryPath, song);
 
         if (!pptPath) {
-            generatorLogger.warn(`  > 警告: 在資料庫中找不到 '${songTitle}' 的檔案。`);
+            // generatorLogger.warn(`❌ 找不到檔案 (ID: ${song.id}, Name: ${song.name})`);
             songsData.push(songInfo);
             continue;
         }
 
         songInfo.found = true;
-
         if (pptPath.toLowerCase().endsWith(".ppt")) {
-            generatorLogger.warn(`  > 警告: '${songTitle}' 是舊版 .ppt 格式，無法自動提取歌詞。`);
             songInfo.isPptOldFormat = true;
             songsData.push(songInfo);
             continue;
         }
 
-        generatorLogger.info(`  > 找到了: ${path.basename(pptPath)}`);
-
         try {
             const text = await new Promise<string>((resolve, reject) => {
                 textract.fromFileWithPath(pptPath, (err, text) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    resolve(text);
+                    if (err) reject(err);
+                    else resolve(text);
                 });
             });
-
-            const lines = text.split('\n').map(line => cleanText(line.trim())).filter(line => line);
+            const lines = text.split('\n')
+                .map(line => cleanText(line.trim()))
+                .filter(line => line.length > 0);
+            
             songInfo.lyrics = lines;
         } catch (error) {
-            generatorLogger.error(`  > 錯誤: 無法從 '${songTitle}' 提取文字:`, error);
+            generatorLogger.error(`提取失敗: ${song.name}`, error);
         }
-
         songsData.push(songInfo);
     }
-
-    generatorLogger.info("--- 歌詞資料提取完成 ---");
     return songsData;
 }
 
-
-
-export async function generateWordDocument(songsData: SongData[], templatePath: string, outputPath: string): Promise<void> {
-    generatorLogger.info("--- 階段二：生成 Word 大字報 ---");
-
+export async function generateWordDocument(songsData: SongData[], outputPath: string): Promise<void> {
     const sections: ISectionOptions[] = [];
 
     for (const song of songsData) {
@@ -133,37 +178,15 @@ export async function generateWordDocument(songsData: SongData[], templatePath: 
         ];
 
         if (!song.lyrics || song.lyrics.length === 0) {
-            let warningText = "";
-            if (!song.found) {
-                warningText = "【警告：在詩歌庫中找不到這首歌的檔案，請檢查歌名是否完全匹配】";
-            } else if (song.isPptOldFormat) {
-                warningText = "【注意：此歌曲為舊版.ppt格式，無法自動匯入，請手動處理】";
-            } else {
-                warningText = "【注意：找到了檔案，但未能成功提取任何歌詞】";
-            }
-            children.push(
-                new Paragraph({
-                    children: [
-                        new TextRun({
-                            text: warningText,
-                            bold: true,
-                        }),
-                    ],
-                }),
-                new Paragraph(""), // Add an empty paragraph for spacing
-            );
+            const warning = !song.found ? "【找不到檔案】" : "【無歌詞內容】";
+            children.push(new Paragraph({ children: [new TextRun({ text: warning, bold: true, color: "FF0000" })] }));
         } else {
             for (const line of song.lyrics) {
-                children.push(
-                    new Paragraph({
-                        text: line,
-                        style: "Lyrics",
-                    }),
-                );
+                children.push(new Paragraph({ text: line, style: "Lyrics" }));
             }
-            children.push(new Paragraph("")); // Add an empty paragraph for spacing
         }
-        sections.push({ properties: { type: SectionType.NEXT_PAGE }, children: children });
+        children.push(new Paragraph("")); 
+        sections.push({ properties: { type: SectionType.NEXT_PAGE }, children });
     }
 
     const doc = new Document({
@@ -172,69 +195,42 @@ export async function generateWordDocument(songsData: SongData[], templatePath: 
                 {
                     id: "SongTitle",
                     name: "Song Title",
-                    basedOn: "Normal",
-                    next: "Normal",
-                    run: {
-                        font: "微軟正黑體",
-                        size: 28,
-                        bold: true,
-                    },
+                    run: { font: "微軟正黑體", size: 36, bold: true }, 
+                    paragraph: { spacing: { after: 200 } }
                 },
                 {
                     id: "Lyrics",
                     name: "Lyrics",
-                    basedOn: "Normal",
-                    next: "Normal",
-                    run: {
-                        font: "微軟正黑體",
-                        size: 24,
-                    },
+                    run: { font: "微軟正黑體", size: 28 }, 
+                    paragraph: { spacing: { line: 360 } } 
                 },
             ],
         },
         sections: sections,
     });
 
-
     const buffer = await Packer.toBuffer(doc);
     fs.writeFileSync(outputPath, buffer);
-    generatorLogger.info(`--- Word 大字報已成功儲存至 '${outputPath}' ---`);
 }
 
-export async function generateProjectionPpt(songsData: SongData[], outputPath: string, linesPerSlide: number = 4): Promise<void> {
-    generatorLogger.info("--- 階段三：生成投影用 PPT ---");
+export async function generateProjectionPpt(songsData: SongData[], outputPath: string): Promise<void> {
     const pres = new PptxGenJS();
     pres.layout = '16x9';
 
-    // Style settings
-    const blackFill = { color: '000000' };
-    const yellowText = { color: 'FFFF00' };
     const fontName = '微軟正黑體';
-    const fontSize = 44;
-    const fontSizeTitle = 24;
+    const linesPerSlide = 2; 
 
     for (const song of songsData) {
-        if (!song.lyrics || song.lyrics.length === 0) {
-            continue; // If there are no lyrics, skip the song
-        }
+        if (!song.lyrics || song.lyrics.length === 0) continue;
 
-        // --- Title Slide ---
         const titleSlide = pres.addSlide();
         titleSlide.background = { color: '000000' };
         titleSlide.addText(song.title, {
-            x: 0,
-            y: 0,
-            w: '100%',
-            h: '100%',
-            align: 'center',
-            valign: 'middle',
-            fontFace: fontName,
-            fontSize: 60,
-            color: 'FFFFFF',
-            bold: true,
+            x: 0, y: 0, w: '100%', h: '100%',
+            align: 'center', valign: 'middle',
+            fontFace: fontName, fontSize: 60, color: 'FFFFFF', bold: true,
         });
 
-        // --- Lyrics Slides ---
         for (let i = 0; i < song.lyrics.length; i += linesPerSlide) {
             const slide = pres.addSlide();
             slide.background = { color: '000000' };
@@ -242,76 +238,51 @@ export async function generateProjectionPpt(songsData: SongData[], outputPath: s
             const lyricsChunk = song.lyrics.slice(i, i + linesPerSlide);
             const lyricsText = lyricsChunk.join('\n');
 
-            // Lyrics content
             slide.addText(lyricsText, {
-                x: 0.5,
-                y: 0.25,
-                w: '95%',
-                h: '85%',
-                align: 'center',
-                valign: 'top',
-                fontFace: fontName,
-                fontSize: fontSize,
-                color: 'FFFF00',
-                bold: true,
-                lineSpacing: 50
+                x: 0.5, y: 0.5, w: '90%', h: '80%',
+                align: 'center', valign: 'middle',
+                fontFace: fontName, fontSize: 54, color: 'FFFF00', bold: true,
+                lineSpacing: 60
             });
 
-            // Footer with song title
             slide.addText(song.title, {
-                x: 0,
-                y: '90%',
-                w: '100%',
-                h: '10%',
-                align: 'center',
-                valign: 'middle',
-                fontFace: fontName,
-                fontSize: fontSizeTitle,
-                color: 'FFFF00',
+                x: 0.5, y: '92%', w: '90%', h: '8%',
+                align: 'right', fontSize: 18, color: '808080', fontFace: fontName
             });
         }
     }
 
     await pres.writeFile({ fileName: outputPath });
-    generatorLogger.info(`--- 投影用 PPT 已成功儲存至 '${outputPath}' ---`);
 }
 
-export async function generateFiles(songOrder: string[]): Promise<string> {
+export async function generateFiles(input: SongInput[] | SongData[]): Promise<string> {
     const PROJECT_ROOT = path.join(__dirname, '..', '..');
-    const PPT_LIBRARY_PATH = path.join(PROJECT_ROOT, "resources", "ppt_library", "2025 別是巴聖教會雲端詩歌PPT修");
-    const TEMPLATE_DOCX_PATH = path.join(PROJECT_ROOT, "resources", "template.docx");
+    const PPT_LIBRARY_PATH = path.join(PROJECT_ROOT, "resources", "ppt_library");
     const OUTPUT_DIR = path.join(PROJECT_ROOT, 'output');
 
-    if (!fs.existsSync(OUTPUT_DIR)) {
-        fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-    }
+    if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
     const outputDocxPath = path.join(OUTPUT_DIR, "敬拜大字報.docx");
     const outputPptxPath = path.join(OUTPUT_DIR, "敬拜PPT.pptx");
     const zipPath = path.join(OUTPUT_DIR, "presentation_files.zip");
 
-    // --- Generate Files ---
-    const songsData = await extractSongData(songOrder, PPT_LIBRARY_PATH);
-    await generateWordDocument(songsData, TEMPLATE_DOCX_PATH, outputDocxPath);
-    await generateProjectionPpt(songsData, outputPptxPath, 2);
+    let songsData: SongData[];
+    
+    if (input.length > 0 && 'id' in input[0]) {
+        songsData = await extractSongData(input as SongInput[], PPT_LIBRARY_PATH);
+    } else {
+        songsData = input as SongData[];
+    }
 
-    // --- Zip Files ---
+    await generateWordDocument(songsData, outputDocxPath);
+    await generateProjectionPpt(songsData, outputPptxPath);
+
     const output = fs.createWriteStream(zipPath);
-    const archive = archiver('zip', {
-        zlib: { level: 9 } // Sets the compression level.
-    });
+    const archive = archiver('zip', { zlib: { level: 9 } });
 
     return new Promise((resolve, reject) => {
-        output.on('close', () => {
-            generatorLogger.info(archive.pointer() + ' total bytes');
-            generatorLogger.info('archiver has been finalized and the output file descriptor has closed.');
-            resolve(zipPath);
-        });
-
-        archive.on('error', (err) => {
-            reject(err);
-        });
-
+        output.on('close', () => resolve(zipPath));
+        archive.on('error', (err) => reject(err));
         archive.pipe(output);
         archive.file(outputDocxPath, { name: '敬拜大字報.docx' });
         archive.file(outputPptxPath, { name: '敬拜PPT.pptx' });
