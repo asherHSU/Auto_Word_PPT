@@ -3,4 +3,14 @@
 
 */node_modules/
 
+/frontend/.vite
+
+
+
+backend/*.log
 .env
+
+/output/敬拜PPT.pptx
+/output/敬拜大字報.docx
+
+/Auto_Word_PPT-old verion

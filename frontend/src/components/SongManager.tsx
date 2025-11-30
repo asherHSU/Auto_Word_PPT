@@ -28,7 +28,7 @@ const SongManager: React.FC<SongManagerProps> = ({ token }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [limit] = useState(10);
+  const [limit] = useState(100);
 
   // Modal State
   const [openDialog, setOpenDialog] = useState(false);

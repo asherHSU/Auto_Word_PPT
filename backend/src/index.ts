@@ -116,35 +116,80 @@ app.get('/api/songs', async (req, res) => {
     const name = req.query.name as string;
 
     let query: any = {};
-    if (name) query.name = { $regex: name, $options: 'i' };
+    
+    // 🛠️ 修改核心：如果有搜尋名稱，維持原樣；如果沒有搜尋名稱，則使用 ID 範圍分頁
+    if (name) {
+        query.name = { $regex: name, $options: 'i' };
+        
+        // 搜尋模式下，還是使用傳統的分頁 (skip/limit)，因為 ID 可能不連續且我們只關心搜尋結果
+        const total = await db.collection(COLLECTION_NAME).countDocuments(query);
+        const songs = await db.collection(COLLECTION_NAME)
+          .find(query)
+          .sort({ id: 1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .toArray();
 
-    const total = await db.collection(COLLECTION_NAME).countDocuments(query);
-    const songs = await db.collection(COLLECTION_NAME)
-      .find(query)
-      .sort({ id: 1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .toArray();
+        // Check files...
+        const songsWithStatus = await Promise.all(songs.map(async (song) => {
+            // @ts-ignore
+            const filePath = await findPptPath(PPT_LIBRARY_PATH, song);
+            return { ...song, hasFile: !!filePath };
+        }));
 
-    // Parallel File Check using Cached findPptPath
-    const songsWithStatus = await Promise.all(songs.map(async (song) => {
-        // @ts-ignore
-        const filePath = await findPptPath(PPT_LIBRARY_PATH, song);
-        return {
-            ...song,
-            hasFile: !!filePath
-        };
-    }));
+        return res.json({
+            data: songsWithStatus,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
 
-    res.json({
-        data: songsWithStatus,
-        pagination: {
-            total,
-            page,
-            limit,
-            totalPages: Math.ceil(total / limit)
-        }
-    });
+    } else {
+        // 🛠️ 瀏覽模式：使用 ID 範圍查詢 (Range Query)
+        const startId = (page - 1) * limit + 1;
+        const endId = page * limit;
+
+        // 設定查詢條件：ID 在 startId 與 endId 之間
+        query.id = { $gte: startId, $lte: endId };
+
+        // 這裡不需要 skip 和 limit，因為 query 已經限制了範圍
+        const songs = await db.collection(COLLECTION_NAME)
+          .find(query)
+          .sort({ id: 1 })
+          .toArray();
+
+        // 為了計算總頁數，我們需要知道最大的 ID 是多少，而不是總筆數
+        // 因為如果是 ID 範圍分頁，總頁數應該由 最大ID / 每頁筆數 決定
+        const lastSong = await db.collection(COLLECTION_NAME).find().sort({ id: -1 }).limit(1).toArray();
+        const maxId = lastSong[0]?.id || 0;
+        
+        // 實際上這個分頁模式下的 "total" 概念有點模糊，我們可以回傳 maxId 當作參考，或者維持 countDocuments
+        // 為了讓前端分頁器正常工作，我們還是回傳總筆數，但 totalPages 改由 maxId 計算
+        const totalDocs = await db.collection(COLLECTION_NAME).countDocuments({}); 
+
+        // Check files...
+        const songsWithStatus = await Promise.all(songs.map(async (song) => {
+            // @ts-ignore
+            const filePath = await findPptPath(PPT_LIBRARY_PATH, song);
+            return { ...song, hasFile: !!filePath };
+        }));
+
+        res.json({
+            data: songsWithStatus,
+            pagination: {
+                total: totalDocs,
+                page,
+                limit,
+                // 關鍵：總頁數 = 最大 ID / 每頁筆數 (無條件進位)
+                // 這樣即使中間缺號，分頁器也能顯示到最後一頁 (例如 ID 1278，limit 100 -> 13 頁)
+                totalPages: Math.ceil(maxId / limit) 
+            }
+        });
+    }
+
   } catch (error) {
     logger.error(error);
     res.status(500).json({ message: 'Error fetching songs' });

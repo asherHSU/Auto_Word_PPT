@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   CssBaseline, 
   Box, 
-  AppBar, 
   Toolbar, 
   Typography, 
   Button, 
@@ -27,15 +26,14 @@ import FileGenerator from './components/FileGenerator';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
-import QueueMusicIcon from '@mui/icons-material/QueueMusic'; // Icon for Generator
-import LibraryMusicIcon from '@mui/icons-material/LibraryMusic'; // Icon for Database
-import MenuIcon from '@mui/icons-material/Menu'; // Icon for mobile menu
+import QueueMusicIcon from '@mui/icons-material/QueueMusic'; 
+import LibraryMusicIcon from '@mui/icons-material/LibraryMusic'; 
 
-// 🎨 自定義主題：放大字體與調整配色
+// 🎨 自定義主題
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#2c3e50', //以此色系為主，較為沈穩專業
+      main: '#2c3e50',
     },
     secondary: {
       main: '#e67e22',
@@ -47,19 +45,10 @@ const theme = createTheme({
   },
   typography: {
     fontFamily: '"Microsoft JhengHei", "Roboto", "Helvetica", "Arial", sans-serif',
-    // 全局字體稍微放大
     fontSize: 16, 
-    h5: {
-      fontWeight: 600,
-      fontSize: '1.5rem',
-    },
-    h6: {
-      fontWeight: 600,
-      fontSize: '1.25rem',
-    },
-    button: {
-      fontSize: '1rem',
-    }
+    h5: { fontWeight: 600, fontSize: '1.5rem' },
+    h6: { fontWeight: 600, fontSize: '1.25rem' },
+    button: { fontSize: '1rem' }
   },
   components: {
     MuiListItemButton: {
@@ -68,12 +57,8 @@ const theme = createTheme({
           '&.Mui-selected': {
             backgroundColor: '#34495e',
             color: 'white',
-            '& .MuiListItemIcon-root': {
-              color: 'white',
-            },
-            '&:hover': {
-              backgroundColor: '#2c3e50',
-            },
+            '& .MuiListItemIcon-root': { color: 'white' },
+            '&:hover': { backgroundColor: '#2c3e50' },
           },
         },
       },
@@ -81,13 +66,13 @@ const theme = createTheme({
   },
 });
 
-const drawerWidth = 280; // 側邊欄寬度
+const drawerWidth = 280;
 
 function App() {
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
-  const [currentTab, setCurrentTab] = useState(0); // 0: Login, 1: Register
-  const [currentPage, setCurrentPage] = useState<'generator' | 'database'>('generator'); // 控制主頁面內容
+  const [currentTab, setCurrentTab] = useState(0); 
+  const [currentPage, setCurrentPage] = useState<'generator' | 'database'>('generator');
 
   useEffect(() => {
     const storedToken = localStorage.getItem('adminToken');
@@ -109,7 +94,6 @@ function App() {
     setCurrentTab(newValue);
   };
 
-  // 側邊欄內容
   const drawerContent = (
     <Box sx={{ overflow: 'auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar sx={{ justifyContent: 'center', py: 2 }}>
@@ -126,9 +110,7 @@ function App() {
             onClick={() => setCurrentPage('generator')}
             sx={{ borderRadius: 2 }}
           >
-            <ListItemIcon>
-              <QueueMusicIcon />
-            </ListItemIcon>
+            <ListItemIcon><QueueMusicIcon /></ListItemIcon>
             <ListItemText primary="製作敬拜檔案" primaryTypographyProps={{ fontSize: '1.1rem' }} />
           </ListItemButton>
         </ListItem>
@@ -138,17 +120,12 @@ function App() {
             onClick={() => setCurrentPage('database')}
             sx={{ borderRadius: 2 }}
           >
-            <ListItemIcon>
-              <LibraryMusicIcon />
-            </ListItemIcon>
+            <ListItemIcon><LibraryMusicIcon /></ListItemIcon>
             <ListItemText primary="詩歌資料庫" primaryTypographyProps={{ fontSize: '1.1rem' }} />
           </ListItemButton>
         </ListItem>
       </List>
-      
-      <Box sx={{ flexGrow: 1 }} /> {/* Spacer to push bottom items */}
-      
-      {/* 底部登入/登出區塊 */}
+      <Box sx={{ flexGrow: 1 }} />
       <Divider />
       <Box sx={{ p: 2 }}>
         {adminToken ? (
@@ -157,23 +134,12 @@ function App() {
               <AdminPanelSettingsIcon sx={{ mr: 1 }} />
               <Typography variant="body1" fontWeight="bold">管理員已登入</Typography>
             </Box>
-            <Button 
-              fullWidth 
-              variant="contained" 
-              color="error" 
-              startIcon={<ExitToAppIcon />}
-              onClick={handleLogout}
-            >
+            <Button fullWidth variant="contained" color="error" startIcon={<ExitToAppIcon />} onClick={handleLogout}>
               登出
             </Button>
           </Paper>
         ) : (
-          <Button 
-            fullWidth 
-            variant="contained" 
-            onClick={() => setShowLogin(true)}
-            sx={{ py: 1.5 }}
-          >
+          <Button fullWidth variant="contained" onClick={() => setShowLogin(true)} sx={{ py: 1.5 }}>
             管理員登入
           </Button>
         )}
@@ -186,7 +152,6 @@ function App() {
       <CssBaseline />
       <Box sx={{ display: 'flex', minHeight: '100vh' }}>
         
-        {/* 側邊欄 (Drawer) */}
         <Drawer
           variant="permanent"
           sx={{
@@ -198,12 +163,11 @@ function App() {
           {drawerContent}
         </Drawer>
 
-        {/* 主內容區塊 */}
-        <Box component="main" sx={{ flexGrow: 1, p: 4, bgcolor: '#f4f6f8', width:'100%', height: '100%', overflow: 'auto' }}>
+        {/* 🛠️ 主內容區塊修改：padding 縮小，移除 maxWidth */}
+        <Box component="main" sx={{ flexGrow: 1, p: 2, bgcolor: '#f4f6f8', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           
-          {/* 登入視窗 (Modal 覆蓋) */}
           {showLogin && !adminToken ? (
-            <Container maxWidth="sm" sx={{ mt: 8 }}>
+            <Container sx={{ mt: 8, flex: 1, overflow: 'auto' }}>
               <Paper elevation={4} sx={{ p: 4, borderRadius: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
                    <Tabs value={currentTab} onChange={handleAuthTabChange} centered variant="fullWidth" sx={{ width: '100%' }}>
@@ -211,36 +175,43 @@ function App() {
                       <Tab label="註冊" sx={{ fontSize: '1.1rem' }} />
                    </Tabs>
                 </Box>
-                {currentTab === 0 ? (
-                   <Login onLoginSuccess={handleLoginSuccess} />
-                ) : (
-                   <Register />
-                )}
+                {currentTab === 0 ? <Login onLoginSuccess={handleLoginSuccess} /> : <Register />}
                 <Button fullWidth onClick={() => setShowLogin(false)} sx={{ mt: 2 }} color="inherit">
                   暫不登入
                 </Button>
               </Paper>
             </Container>
           ) : (
-            // 實際功能頁面
-            <Box sx={{ maxWidth: '1600px', margin: '0 auto' }}> {/* 限制最大寬度以免在大螢幕太散 */}
+            // 🛠️ 頁面容器：寬度 100%，高度自動填滿
+            <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               {currentPage === 'generator' && (
-                <Box>
-                  <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold', color: '#2c3e50' }}>
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <Typography variant="h4" sx={{ mb: 2, fontWeight: 'bold', color: '#2c3e50' }}>
                     製作敬拜檔案
                   </Typography>
-                  <Paper elevation={0} sx={{ p: 4, borderRadius: 3, border: '1px solid #e0e0e0' }}>
+                  <Paper 
+                    elevation={0} 
+                    sx={{ 
+                      p: 2, // 縮小內距讓內容更寬
+                      borderRadius: 3, 
+                      border: '1px solid #e0e0e0',
+                      flex: 1, // 自動填滿剩餘高度
+                      display: 'flex',
+                      flexDirection: 'column',
+                      overflow: 'hidden' // 防止 Paper 本身出現捲軸，交給內部處理
+                    }}
+                  >
                     <FileGenerator token={adminToken} />
                   </Paper>
                 </Box>
               )}
 
               {currentPage === 'database' && (
-                <Box>
-                  <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold', color: '#2c3e50' }}>
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
+                  <Typography variant="h4" sx={{ mb: 2, fontWeight: 'bold', color: '#2c3e50' }}>
                     詩歌資料庫
                   </Typography>
-                  <Paper elevation={0} sx={{ p: 4, borderRadius: 3, border: '1px solid #e0e0e0' }}>
+                  <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0' }}>
                     <SongManager token={adminToken} />
                   </Paper>
                 </Box>
