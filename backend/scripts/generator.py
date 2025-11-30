@@ -61,21 +61,27 @@ def find_ppt_path(root_path, song_id, song_name):
     return None
 
 def extract_lyrics_from_ppt(ppt_path):
-    if not ppt_path or ppt_path.endswith(".ppt"): return []
+    """
+    Extracts lyrics from a PPTX file, preserving the slide structure.
+    Returns a list of lists, where each inner list represents the lines on a slide.
+    """
+    if not ppt_path or not ppt_path.lower().endswith(".pptx"): return []
     try:
         prs = Presentation(ppt_path)
-        lyrics = []
+        slides_lyrics = []
         for slide in prs.slides:
+            slide_lines = []
             for shape in slide.shapes:
                 if not shape.has_text_frame or not shape.text.strip(): continue
                 if shape.top < prs.slide_height / 2:
                     text = shape.text_frame.text.replace('\v', '\n')
                     for line in text.splitlines():
-                        if line.strip(): 
-                            # 替換所有 tab 和多個空格為單一空格
+                        if line.strip():
                             cleaned_line = re.sub(r'[ \t]+', ' ', clean_text(line))
-                            lyrics.append(cleaned_line)
-        return lyrics
+                            slide_lines.append(cleaned_line)
+            if slide_lines:
+                slides_lyrics.append(slide_lines)
+        return slides_lyrics
     except:
         return []
 
@@ -96,11 +102,14 @@ if MODE == "preview":
         song_name = song.get('name', '') or song.get('title', '')
         
         ppt_path = find_ppt_path(PPT_LIBRARY_PATH, song_id, song_name)
-        lyrics = extract_lyrics_from_ppt(ppt_path)
+        # lyrics_by_slide is a list of lists
+        lyrics_by_slide = extract_lyrics_from_ppt(ppt_path)
+        # Flatten the list for preview compatibility
+        flat_lyrics = [line for slide in lyrics_by_slide for line in slide]
         
         results.append({
             "title": song_name,
-            "lyrics": lyrics,
+            "lyrics": flat_lyrics,
             "found": bool(ppt_path),
             "isOld": ppt_path.endswith(".ppt") if ppt_path else False
         })
@@ -136,79 +145,106 @@ elif MODE == "generate":
     FONT_NAME = "微軟正黑體"
 
     # 處理資料
-    # songs_input 在生成模式下可能包含 lyrics (如果是預覽後提交的)
-    # 或者只包含 id/name (如果是直接生成)
-    
     for i, song in enumerate(songs_input):
         title = song.get('title') or song.get('name')
-        lyrics = song.get('lyrics')
-
-        # 如果沒有歌詞 (例如直接生成)，嘗試去抓
-        if not lyrics:
+        
+        is_from_preview = 'lyrics' in song and song['lyrics'] is not None
+        
+        lyrics_data = []
+        if is_from_preview:
+            lyrics_data = [re.sub(r'[ \t]+', ' ', line) for line in song['lyrics']]
+        else:
             sid = song.get('id', 0)
             path = find_ppt_path(PPT_LIBRARY_PATH, sid, title)
-            lyrics = extract_lyrics_from_ppt(path)
-        else:
-            # 如果歌詞是從前端來的，也要處理 tab 和多個空格
-            lyrics = [re.sub(r'[ \t]+', ' ', line) for line in lyrics]
-
+            lyrics_data = extract_lyrics_from_ppt(path)
 
         # --- 生成 Word ---
-        # 在每首歌前面加一個空行，但跳過第一首
+        # Word generation always needs a flat list of lyrics
+        flat_lyrics = []
+        if is_from_preview:
+            flat_lyrics = lyrics_data
+        else: # It's a list of lists, flatten it
+            flat_lyrics = [line for slide in lyrics_data for line in slide]
+
         if i > 0:
             doc.add_paragraph("")
 
         doc.add_paragraph(f"【{title}】", style='SongTitle' if 'SongTitle' in doc.styles else None)
         
-        if not lyrics:
+        if not flat_lyrics:
             p = doc.add_paragraph()
             run = p.add_run("【無歌詞內容】")
-            run.font.color.rgb = RGBColor(255, 0, 0)
+            run.font.color.rgb = RGBColor(0, 0, 0) # Changed to black
         else:
-            for line in lyrics:
+            for line in flat_lyrics:
                 p = doc.add_paragraph(line, style='Lyrics' if 'Lyrics' in doc.styles else None)
-                # 移除段落前後的額外間距
                 p.paragraph_format.space_before = Pt(0)
                 p.paragraph_format.space_after = Pt(0)
                 
                 if line.strip().lower().startswith(('c.', 'b.')):
                     for run in p.runs:
                         run.font.bold = True
-                        run.font.color.rgb = RGBColor(255, 0, 0)
+                        # run.font.color.rgb = RGBColor(255, 0, 0) # Removed red color setting
         
         # --- 生成 PPT ---
-        if not lyrics: continue
+        if not lyrics_data: continue
         
-        # Blank Layout (usually index 6)
         layout = prs.slide_layouts[6] 
-        
-        for i in range(0, len(lyrics), 2):
-            slide = prs.slides.add_slide(layout)
-            slide.background.fill.solid()
-            slide.background.fill.fore_color.rgb = BLACK_FILL
 
-            # Combine lyrics into one string
-            line1 = lyrics[i]
-            lyric_text = line1
-            if i + 1 < len(lyrics):
-                line2 = lyrics[i+1]
-                lyric_text += f"\n{line2}"
+        if is_from_preview:
+            # Logic for flat list from preview
+            for i in range(0, len(lyrics_data), 2):
+                slide = prs.slides.add_slide(layout)
+                slide.background.fill.solid()
+                slide.background.fill.fore_color.rgb = BLACK_FILL
 
-            # Create a single textbox for lyrics at the top
-            tb_lyrics = slide.shapes.add_textbox(Inches(0.5), Inches(0.1), Inches(9), Inches(2.5))
-            tf_lyrics = tb_lyrics.text_frame
-            p_lyrics = tf_lyrics.paragraphs[0]
-            p_lyrics.text = lyric_text
-            p_lyrics.alignment = PP_ALIGN.CENTER
-            apply_font_settings(p_lyrics, FONT_NAME, 32, YELLOW_TEXT, True)
+                line1 = lyrics_data[i]
+                lyric_text = line1
+                if i + 1 < len(lyrics_data):
+                    lyric_text += f"\n{lyrics_data[i+1]}"
 
-            # Footer with song title at the bottom
-            tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(5.1), Inches(9), Inches(0.1))
-            tf_title = tb_title.text_frame
-            p_title = tf_title.paragraphs[0]
-            p_title.text = f"《{title}》"
-            p_title.alignment = PP_ALIGN.CENTER
-            apply_font_settings(p_title, FONT_NAME, 20, YELLOW_TEXT, False)
+                tb_lyrics = slide.shapes.add_textbox(Inches(0.5), Inches(0.1), Inches(9), Inches(2.5))
+                tf_lyrics = tb_lyrics.text_frame
+                p_lyrics = tf_lyrics.paragraphs[0]
+                p_lyrics.text = lyric_text
+                p_lyrics.alignment = PP_ALIGN.CENTER
+                apply_font_settings(p_lyrics, FONT_NAME, 32, YELLOW_TEXT, True)
+
+                tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(5.1), Inches(9), Inches(0.5))
+                tf_title = tb_title.text_frame
+                p_title = tf_title.paragraphs[0]
+                p_title.text = f"《{title}》"
+                p_title.alignment = PP_ALIGN.CENTER
+                apply_font_settings(p_title, FONT_NAME, 20, YELLOW_TEXT, False)
+        else:
+            # Logic for list of lists from direct extraction
+            for slide_lines in lyrics_data:
+                slide = prs.slides.add_slide(layout)
+                slide.background.fill.solid()
+                slide.background.fill.fore_color.rgb = BLACK_FILL
+
+                num_lines = len(slide_lines)
+                font_size = 32
+                if num_lines == 3:
+                    font_size = 28
+                elif num_lines >= 4:
+                    font_size = 24
+                
+                lyric_text = "\n".join(slide_lines)
+
+                tb_lyrics = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(9), Inches(2.5))
+                tf_lyrics = tb_lyrics.text_frame
+                p_lyrics = tf_lyrics.paragraphs[0]
+                p_lyrics.text = lyric_text
+                p_lyrics.alignment = PP_ALIGN.CENTER
+                apply_font_settings(p_lyrics, FONT_NAME, font_size, YELLOW_TEXT, True)
+
+                tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(5.1), Inches(9), Inches(0.5))
+                tf_title = tb_title.text_frame
+                p_title = tf_title.paragraphs[0]
+                p_title.text = f"《{title}》"
+                p_title.alignment = PP_ALIGN.CENTER
+                apply_font_settings(p_title, FONT_NAME, 20, YELLOW_TEXT, False)
 
     doc.save(OUTPUT_DOCX)
     prs.save(OUTPUT_PPTX)
