@@ -28,9 +28,9 @@ const SongManager: React.FC<SongManagerProps> = ({ token }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  
   const [limit] = useState(100);
 
-  // Modal State
   const [openDialog, setOpenDialog] = useState(false);
   const [currentSong, setCurrentSong] = useState<Partial<Song>>({});
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -54,7 +54,7 @@ const SongManager: React.FC<SongManagerProps> = ({ token }) => {
 
   useEffect(() => {
     fetchSongs();
-  }, [page, searchTerm]);
+  }, [page, searchTerm, limit]); 
 
   const handleOpenDialog = (song?: Song) => {
     if (song) {
@@ -221,15 +221,25 @@ const SongManager: React.FC<SongManagerProps> = ({ token }) => {
         </Table>
       </TableContainer>
 
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
         <Pagination 
           count={totalPages} 
           page={page} 
-          onChange={(e, v) => setPage(v)} 
-          variant="outlined"
-          color="secondary"
+          // 🛠️ 修正：將 e 改為 _，表示忽略事件參數
+          onChange={(_, v) => setPage(v)} 
+          color="primary" 
           showFirstButton 
           showLastButton 
+          sx={{
+            '& li': {
+              backgroundColor: 'transparent !important',
+              padding: '0 !important',
+              margin: '0 !important',
+              border: 'none !important',
+              borderRadius: '0 !important',
+              display: 'block !important', 
+            }
+          }}
         />
       </Box>
 

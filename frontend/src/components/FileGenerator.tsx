@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box, Paper, TextField, List, ListItem, ListItemText, ListItemSecondaryAction,
+  Box, Paper, TextField, List, ListItem, ListItemText, 
   IconButton, Button, Typography, InputAdornment, Dialog, DialogTitle, 
-  DialogContent, DialogActions, CircularProgress, ListItemButton, Stack, Divider
+  DialogContent, DialogActions, CircularProgress, ListItemButton, Stack, ListItemIcon
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import DownloadIcon from '@mui/icons-material/Download';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 
 interface SongData {
   title: string;
@@ -20,7 +22,7 @@ interface Song {
   name: string;
 }
 
-const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
+const FileGenerator: React.FC<{ token: string | null }> = () => {
   const [allSongs, setAllSongs] = useState<Song[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSongs, setSelectedSongs] = useState<Song[]>([]);
@@ -29,12 +31,40 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
   const [previewData, setPreviewData] = useState<SongData[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    const animation = requestAnimationFrame(() => setEnabled(true));
+    return () => {
+      cancelAnimationFrame(animation);
+      setEnabled(false);
+    };
+  }, []);
+
   const API_URL = import.meta.env.VITE_API_URL || '';
 
+  // 🛠️ 關鍵修正：加強 API 錯誤處理
   useEffect(() => {
     fetch(`${API_URL}/api/songs?limit=2000`)
-      .then(res => res.json())
-      .then(data => setAllSongs(data.data));
+      .then(res => {
+        if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data => {
+        // 確保 data.data 存在且為陣列，否則給空陣列
+        if (data && Array.isArray(data.data)) {
+            setAllSongs(data.data);
+        } else {
+            console.warn("API returned unexpected format:", data);
+            setAllSongs([]);
+        }
+      })
+      .catch(error => {
+        console.error("Failed to fetch songs:", error);
+        // 發生錯誤時，保持空陣列，防止 filter 崩潰
+        setAllSongs([]); 
+      });
   }, []);
 
   const handleAddSong = (song: Song) => {
@@ -45,6 +75,16 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
 
   const handleRemoveSong = (id: number) => {
     setSelectedSongs(selectedSongs.filter(s => s.id !== id));
+  };
+
+  const onDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+
+    const items = Array.from(selectedSongs);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+
+    setSelectedSongs(items);
   };
 
   const handlePreview = async () => {
@@ -100,14 +140,16 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
     }
   };
 
-  const filteredSongs = allSongs.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  // 確保 allSongs 是陣列再 filter，雙重保險
+  const safeSongs = Array.isArray(allSongs) ? allSongs : [];
+  const filteredSongs = safeSongs.filter(s => 
+    s.name && s.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
-    // 🛠️ 修改：高度改為 100%，因為父容器 (App.tsx) 已經透過 flex 幫我們撐開了
     <Box sx={{ height: '100%' }}>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ height: '100%' }}>
         
-        {/* 左側：搜尋區塊 (固定寬度，讓右邊可以最大化) */}
         <Box sx={{ 
           width: { xs: '100%', md: '360px' }, 
           flexShrink: 0, 
@@ -124,7 +166,7 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
               bgcolor: '#ffffff',
               borderRadius: 3,
               boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
-              overflow: 'hidden' // 防止外溢
+              overflow: 'hidden'
             }}
           >
             <Typography variant="h6" gutterBottom fontWeight="bold" color="primary" sx={{ borderBottom: '2px solid #3498db', pb: 1, mb: 2, display: 'inline-block', width: 'fit-content' }}>
@@ -142,7 +184,6 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
               sx={{ mb: 2 }}
             />
             
-            {/* 列表自動填滿高度 */}
             <List sx={{ flexGrow: 1, overflow: 'auto', border: '1px solid #eee', borderRadius: 2, bgcolor: '#fafafa' }}>
               {filteredSongs.slice(0, 100).map(song => {
                 const isSelected = selectedSongs.some(s => s.id === song.id);
@@ -175,9 +216,8 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
           </Paper>
         </Box>
 
-        {/* 右側：已選清單 (佔滿剩餘所有空間) */}
         <Box sx={{ 
-          flex: 1, // 👈 自動填滿剩餘寬度
+          flex: 1, 
           display: 'flex', 
           flexDirection: 'column',
           minWidth: 0 
@@ -197,36 +237,64 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
             }}
           >
             <Typography variant="h6" gutterBottom fontWeight="bold" color="secondary" sx={{ borderBottom: '2px solid #e67e22', pb: 1, mb: 2, display: 'inline-block', width: 'fit-content' }}>
-              2. 已選清單 (生成順序)
+              2. 已選清單 (拖移調整順序)
             </Typography>
             
-            <List sx={{ flexGrow: 1, overflow: 'auto', bgcolor: 'white', borderRadius: 2, border: '1px solid #ffe0b2' }}>
-              {selectedSongs.map((song, idx) => (
-                <ListItem 
-                  key={song.id} 
-                  divider 
-                  disablePadding
-                  secondaryAction={
-                    <IconButton edge="end" onClick={() => handleRemoveSong(song.id)} color="error" size="large">
-                      <RemoveCircleOutlineIcon fontSize="inherit" />
-                    </IconButton>
-                  }
-                >
-                   <ListItemButton sx={{ py: 1.5 }}>
-                      <ListItemText 
-                        primary={`${idx + 1}. ${song.name}`} 
-                        primaryTypographyProps={{ fontSize: '1.1rem', fontWeight: 500 }}
-                      />
-                   </ListItemButton>
-                </ListItem>
-              ))}
-              {selectedSongs.length === 0 && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'text.secondary', opacity: 0.6 }}>
-                  <PlaylistAddCheckIcon sx={{ fontSize: 60, mb: 1 }} />
-                  <Typography variant="h6">尚未選擇詩歌</Typography>
-                </Box>
-              )}
-            </List>
+            {enabled && (
+              <DragDropContext onDragEnd={onDragEnd}>
+                <Droppable droppableId="selected-songs">
+                  {(provided) => (
+                    <List 
+                      {...provided.droppableProps}
+                      ref={provided.innerRef}
+                      sx={{ flexGrow: 1, overflow: 'auto', bgcolor: 'white', borderRadius: 2, border: '1px solid #ffe0b2' }}
+                    >
+                      {selectedSongs.map((song, idx) => (
+                        <Draggable key={song.id} draggableId={String(song.id)} index={idx}>
+                          {(provided, snapshot) => (
+                            <ListItem 
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              divider 
+                              disablePadding
+                              secondaryAction={
+                                <IconButton edge="end" onClick={() => handleRemoveSong(song.id)} color="error" size="large">
+                                  <RemoveCircleOutlineIcon fontSize="inherit" />
+                                </IconButton>
+                              }
+                              sx={{ 
+                                bgcolor: snapshot.isDragging ? '#fff3e0' : 'white', 
+                                transition: 'background-color 0.2s'
+                              }}
+                            >
+                              <ListItemButton sx={{ py: 1.5 }} disableRipple>
+                                <ListItemIcon 
+                                  {...provided.dragHandleProps} 
+                                  sx={{ minWidth: 36, cursor: 'grab', color: '#ccc', '&:hover': { color: '#666' } }}
+                                >
+                                  <DragIndicatorIcon />
+                                </ListItemIcon>
+                                <ListItemText 
+                                  primary={`${idx + 1}. ${song.name}`} 
+                                  primaryTypographyProps={{ fontSize: '1.1rem', fontWeight: 500 }}
+                                />
+                              </ListItemButton>
+                            </ListItem>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                      {selectedSongs.length === 0 && (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'text.secondary', opacity: 0.6, minHeight: 300 }}>
+                          <PlaylistAddCheckIcon sx={{ fontSize: 60, mb: 1 }} />
+                          <Typography variant="h6">尚未選擇詩歌</Typography>
+                        </Box>
+                      )}
+                    </List>
+                  )}
+                </Droppable>
+              </DragDropContext>
+            )}
 
             <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
                 <Button 
@@ -246,7 +314,6 @@ const FileGenerator: React.FC<{ token: string | null }> = ({ token }) => {
         </Box>
       </Stack>
 
-      {/* Preview Dialog */}
       <Dialog 
         open={isPreviewing} 
         onClose={() => setIsPreviewing(false)} 
