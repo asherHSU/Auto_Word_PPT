@@ -143,3 +143,17 @@ Refer to the `deployment_strategy.md` file in the project root for detailed reco
 
 ---
 **(End of README.md content)**
+
+
+## docker build & docker push
+```bash
+docker buildx build --no-cache --platform linux/amd64 -t asher31892774/church-frontend:latest ./frontend
+docker buildx build --no-cache --platform linux/amd64 -t asher31892774/church-backend:latest ./backend
+docker push asher31892774/church-frontend:latest
+docker push asher31892774/church-backend:latest
+```
+
+```bash
+docker-compose down
+docker-compose up -d --build
+```

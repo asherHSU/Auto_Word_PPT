@@ -8,8 +8,6 @@ import {
   createTheme, 
   ThemeProvider,
   Paper,
-  Tabs,
-  Tab,
   List,
   ListItem,
   ListItemButton,
@@ -21,7 +19,9 @@ import {
   Tooltip,
   AppBar,
   useMediaQuery,
-  Drawer as MuiDrawer
+  Drawer as MuiDrawer,
+  Tabs,
+  Tab
 } from '@mui/material';
 import { styled, Theme, CSSObject, useTheme } from '@mui/material/styles';
 // Icons
@@ -32,16 +32,16 @@ import QueueMusicIcon from '@mui/icons-material/QueueMusic';
 import LibraryMusicIcon from '@mui/icons-material/LibraryMusic'; 
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import MenuIcon from '@mui/icons-material/Menu';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'; 
 
 // Components
 import Login from './components/Login';
-import Register from './components/Register'; 
 import SongManager from './components/SongManager';
 import FileGenerator from './components/FileGenerator';
+import UserManager from './components/UserManager'; 
 
 const drawerWidth = 280;
 
-// 🎨 定義主題
 const theme = createTheme({
   palette: {
     primary: {
@@ -78,7 +78,7 @@ const theme = createTheme({
   },
 });
 
-// 🛠️ 桌面版 Drawer 的樣式 Mixins
+// 🛠️ Drawer Mixins
 const openedMixin = (theme: Theme): CSSObject => ({
   width: drawerWidth,
   transition: theme.transitions.create('width', {
@@ -100,7 +100,6 @@ const closedMixin = (theme: Theme): CSSObject => ({
   },
 });
 
-// 自定義 Styled Drawer (僅用於桌面版)
 const DesktopDrawer = styled(MuiDrawer, { shouldForwardProp: (prop) => prop !== 'open' })(
   ({ theme, open }) => ({
     width: drawerWidth,
@@ -118,19 +117,19 @@ const DesktopDrawer = styled(MuiDrawer, { shouldForwardProp: (prop) => prop !== 
   }),
 );
 
-// 抽出 Drawer 內容組件，讓手機/桌面共用
+// 側邊欄內容
 const DrawerContent = ({ 
   open, 
   toggleDrawer, 
   currentPage, 
   setCurrentPage, 
   adminToken, 
+  userRole, 
   setShowLogin, 
   handleLogout,
   isMobile 
 }: any) => (
   <Box sx={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
-    {/* 標題與切換按鈕 */}
     <Toolbar sx={{ px: [1], justifyContent: open ? 'space-between' : 'center', py: 2 }}>
       {open && (
         <Typography variant="h6" noWrap component="div" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', ml: 1, fontWeight: 'bold' }}>
@@ -138,7 +137,6 @@ const DrawerContent = ({
           Auto PPT
         </Typography>
       )}
-      {/* 手機版抽屜內只顯示關閉按鈕，桌面版顯示切換按鈕 */}
       <IconButton onClick={toggleDrawer}>
         {isMobile ? <ChevronLeftIcon /> : (open ? <ChevronLeftIcon /> : <MenuIcon />)}
       </IconButton>
@@ -186,6 +184,32 @@ const DrawerContent = ({
           </ListItemButton>
         </Tooltip>
       </ListItem>
+
+      {/* ✨ 僅限 Super Admin 顯示 */}
+      {adminToken && userRole === 'super_admin' && (
+        <>
+          <Divider sx={{ my: 1 }} />
+          <ListItem disablePadding sx={{ display: 'block' }}>
+            <Tooltip title={open ? "" : "帳號管理"} placement="right" arrow>
+              <ListItemButton 
+                selected={currentPage === 'users'}
+                onClick={() => { setCurrentPage('users'); if(isMobile) toggleDrawer(); }}
+                sx={{ 
+                  minHeight: 48,
+                  justifyContent: open ? 'initial' : 'center',
+                  borderRadius: 2,
+                  px: 2.5,
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 0, mr: open ? 3 : 'auto', justifyContent: 'center' }}>
+                  <ManageAccountsIcon />
+                </ListItemIcon>
+                <ListItemText primary="帳號管理" sx={{ opacity: open ? 1 : 0 }} primaryTypographyProps={{ fontSize: '1.1rem' }} />
+              </ListItemButton>
+            </Tooltip>
+          </ListItem>
+        </>
+      )}
     </List>
     
     <Box sx={{ flexGrow: 1 }} />
@@ -197,14 +221,16 @@ const DrawerContent = ({
           <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default', border: 'none', width: '100%' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, color: 'success.main' }}>
               <AdminPanelSettingsIcon sx={{ mr: 1 }} />
-              <Typography variant="body1" fontWeight="bold">管理員已登入</Typography>
+              <Typography variant="body1" fontWeight="bold">
+                {userRole === 'super_admin' ? '超級管理員' : '管理員'}
+              </Typography>
             </Box>
             <Button fullWidth variant="contained" color="error" startIcon={<ExitToAppIcon />} onClick={handleLogout}>
               登出
             </Button>
           </Paper>
         ) : (
-          <Tooltip title="管理員登出" placement="right">
+          <Tooltip title="登出" placement="right">
             <IconButton color="error" onClick={handleLogout}>
               <ExitToAppIcon />
             </IconButton>
@@ -227,35 +253,44 @@ const DrawerContent = ({
   </Box>
 );
 
-// 內部 Layout 組件，負責響應式邏輯
 function DashboardLayout() {
   const theme = useTheme();
-  // 斷點設為 md (900px)，小於此寬度視為手機/平板模式
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
-  const [currentTab, setCurrentTab] = useState(0); 
-  const [currentPage, setCurrentPage] = useState<'generator' | 'database'>('generator');
+  const [currentTab, setCurrentTab] = useState(0); // 雖然只剩登入，但保留 Tab 結構以免報錯
   
-  // 狀態管理
-  const [desktopOpen, setDesktopOpen] = useState(true); // 桌面版側邊欄
-  const [mobileOpen, setMobileOpen] = useState(false);  // 手機版側邊欄
+  // 頁面狀態
+  const [currentPage, setCurrentPage] = useState<'generator' | 'database' | 'users'>('generator');
+  
+  const [desktopOpen, setDesktopOpen] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const storedToken = localStorage.getItem('adminToken');
-    if (storedToken) setAdminToken(storedToken);
+    const storedRole = localStorage.getItem('adminRole');
+    if (storedToken) {
+        setAdminToken(storedToken);
+        setUserRole(storedRole);
+    }
   }, []);
 
-  const handleLoginSuccess = (token: string) => {
+  const handleLoginSuccess = (token: string, role: string) => {
     setAdminToken(token);
+    setUserRole(role);
     localStorage.setItem('adminToken', token);
+    localStorage.setItem('adminRole', role);
     setShowLogin(false);
   };
 
   const handleLogout = () => {
     setAdminToken(null);
+    setUserRole(null);
     localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminRole');
+    setCurrentPage('generator'); 
   };
 
   const handleAuthTabChange = (_: React.SyntheticEvent, newValue: number) => {
@@ -274,7 +309,6 @@ function DashboardLayout() {
     <Box sx={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
       <CssBaseline />
 
-      {/* 📱 手機版頂部導航列 (僅在手機模式顯示) */}
       <AppBar 
         position="fixed" 
         sx={{ 
@@ -300,35 +334,33 @@ function DashboardLayout() {
       </AppBar>
 
       <Box sx={{ display: 'flex', flexGrow: 1, height: '100%', overflow: 'hidden' }}>
-        {/* 導航欄區域 */}
         <Box
           component="nav"
           sx={{ width: { md: desktopOpen ? drawerWidth : 65 }, flexShrink: { md: 0 } }}
         >
-          {/* 📱 手機版 Drawer (Temporary) */}
           <MuiDrawer
             variant="temporary"
             open={mobileOpen}
             onClose={handleDrawerToggle}
-            ModalProps={{ keepMounted: true }} // 提升手機版開啟效能
+            ModalProps={{ keepMounted: true }} 
             sx={{
               display: { xs: 'block', md: 'none' },
               '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
             }}
           >
             <DrawerContent 
-              open={true} // 手機版打開時總是展開狀態
+              open={true}
               toggleDrawer={handleDrawerToggle}
               currentPage={currentPage}
               setCurrentPage={setCurrentPage}
               adminToken={adminToken}
+              userRole={userRole}
               setShowLogin={setShowLogin}
               handleLogout={handleLogout}
               isMobile={true}
             />
           </MuiDrawer>
 
-          {/* 💻 桌面版 Drawer (Permanent/Mini) */}
           <DesktopDrawer
             variant="permanent"
             open={desktopOpen}
@@ -342,6 +374,7 @@ function DashboardLayout() {
               currentPage={currentPage}
               setCurrentPage={setCurrentPage}
               adminToken={adminToken}
+              userRole={userRole}
               setShowLogin={setShowLogin}
               handleLogout={handleLogout}
               isMobile={false}
@@ -349,19 +382,18 @@ function DashboardLayout() {
           </DesktopDrawer>
         </Box>
 
-        {/* 📄 主要內容區域 */}
         <Box 
           component="main" 
           sx={{ 
             flexGrow: 1, 
             p: 2, 
             bgcolor: '#f4f6f8', 
-            height: '100vh', // 使用 vh 確保填滿
+            height: '100vh', 
             overflow: 'hidden', 
             display: 'flex', 
             flexDirection: 'column',
             width: { xs: '100%', md: `calc(100% - ${desktopOpen ? drawerWidth : 65}px)` },
-            mt: { xs: '56px', sm: '64px', md: 0 } // 手機版預留 AppBar 高度
+            mt: { xs: '56px', sm: '64px', md: 0 }
           }}
         >
           {showLogin && !adminToken ? (
@@ -370,13 +402,17 @@ function DashboardLayout() {
                 <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
                    <Tabs value={currentTab} onChange={handleAuthTabChange} centered variant="fullWidth" sx={{ width: '100%' }}>
                       <Tab label="登入" sx={{ fontSize: '1.1rem' }} />
-                      <Tab label="註冊" sx={{ fontSize: '1.1rem' }} />
+                      {/* 移除了註冊 Tab，但保留 Login 邏輯 */}
                    </Tabs>
                 </Box>
-                {currentTab === 0 ? <Login onLoginSuccess={handleLoginSuccess} /> : <Register />}
-                <Button fullWidth onClick={() => setShowLogin(false)} sx={{ mt: 2 }} color="inherit">
-                  暫不登入
-                </Button>
+                {/* 直接顯示登入 */}
+                <Login onLoginSuccess={(token, role) => handleLoginSuccess(token, role || 'admin')} />
+                
+                <Box textAlign="center" mt={3}>
+                    <Button onClick={() => setShowLogin(false)} color="inherit">
+                        返回訪客模式
+                    </Button>
+                </Box>
               </Paper>
             </Container>
           ) : (
@@ -410,6 +446,18 @@ function DashboardLayout() {
                   </Typography>
                   <Paper elevation={0} sx={{ p: { xs: 1, md: 3 }, borderRadius: 3, border: '1px solid #e0e0e0' }}>
                     <SongManager token={adminToken} />
+                  </Paper>
+                </Box>
+              )}
+
+              {/* ✨ 只有 Super Admin 能看到的帳號管理頁面 */}
+              {currentPage === 'users' && adminToken && userRole === 'super_admin' && (
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
+                  <Typography variant="h4" sx={{ mb: 2, fontWeight: 'bold', color: '#2c3e50', fontSize: { xs: '1.5rem', md: '2.125rem' } }}>
+                    帳號權限管理
+                  </Typography>
+                  <Paper elevation={0} sx={{ p: { xs: 1, md: 3 }, borderRadius: 3, border: '1px solid #e0e0e0' }}>
+                    <UserManager token={adminToken} />
                   </Paper>
                 </Box>
               )}
