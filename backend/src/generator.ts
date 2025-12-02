@@ -32,14 +32,18 @@ export interface SongData {
 
 let fileCache: { name: string; path: string; normalized: string }[] | null = null;
 
-// 🛠️ 關鍵修正：加入空值檢查
+// 輔助：正規化字串 (去除非英數中文並轉小寫)
 function normalizeString(str: string): string {
     if (!str) return ""; // 防止 undefined 導致 crash
     return str.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '').toLowerCase();
 }
 
+// 遞迴建立檔案快取
 function buildFileCache(rootPath: string) {
-    if (!fs.existsSync(rootPath)) return;
+    if (!fs.existsSync(rootPath)) {
+        generatorLogger.warn(`⚠️ Path does not exist: ${rootPath}`);
+        return;
+    }
 
     const files: { name: string; path: string; normalized: string }[] = [];
     
@@ -65,13 +69,13 @@ function buildFileCache(rootPath: string) {
                 }
             }
         } catch (e) {
-            // ignore
+            // ignore permission errors etc.
         }
     }
     
     traverse(rootPath);
     fileCache = files;
-    generatorLogger.info(`✅ Cache built. Found ${files.length} presentation files.`);
+    generatorLogger.info(`✅ Cache built. Found ${files.length} presentation files in ${rootPath}`);
 }
 
 export function clearFileCache() {
@@ -79,6 +83,7 @@ export function clearFileCache() {
     generatorLogger.info('🔄 File cache cleared.');
 }
 
+// 尋找 PPT 路徑
 export async function findPptPath(rootPath: string, song: SongInput): Promise<string | null> {
     if (!fileCache) {
         buildFileCache(rootPath);
@@ -86,16 +91,18 @@ export async function findPptPath(rootPath: string, song: SongInput): Promise<st
 
     if (!fileCache) return null;
 
-    // 🛠️ 關鍵修正：確保 song 與 song.name 存在
     if (!song || !song.name) return null;
 
     const targetName = normalizeString(song.name);
+    // 比對 ID (例如 "001" 或 "1")
     const idRegex = new RegExp(`^0*${song.id}([^0-9]|$)`);
 
     for (const file of fileCache) {
+        // 優先比對 ID
         if (idRegex.test(file.name)) {
             return file.path;
         }
+        // 其次比對歌名 (模糊比對)
         if (file.normalized.includes(targetName)) {
             return file.path;
         }
@@ -107,15 +114,21 @@ export async function findPptPath(rootPath: string, song: SongInput): Promise<st
 // 🐍 第二部分：Python 腳本呼叫
 
 async function runPythonScript(mode: 'preview' | 'generate', payload: any, outputDir?: string): Promise<any> {
-    const PROJECT_ROOT = path.join(__dirname, '..', '..');
+    // 🛠️ 修正：使用 process.cwd() 確保指向 /app (Docker) 或 專案根目錄 (Local)
+    const PROJECT_ROOT = process.cwd(); 
     const RESOURCES_DIR = path.join(PROJECT_ROOT, 'resources');
+    // 注意：腳本位置相對於 __dirname (dist/src) 
     const SCRIPT_PATH = path.join(__dirname, '../scripts/generator.py');
 
     return new Promise((resolve, reject) => {
+        // 參數順序: script.py [mode] [json_data] [resources_dir] [output_dir?]
         const args = [SCRIPT_PATH, mode, JSON.stringify(payload), RESOURCES_DIR];
         if (outputDir) args.push(outputDir);
 
         generatorLogger.info(`🐍 Running Python: ${mode}`);
+        generatorLogger.info(`📂 Resources Dir: ${RESOURCES_DIR}`);
+        
+        // 使用 spawn 執行 python
         const py = spawn('python', args);
 
         let stdoutData = '';
@@ -131,9 +144,11 @@ async function runPythonScript(mode: 'preview' | 'generate', payload: any, outpu
             }
             
             try {
+                // Python 可能會輸出多行 log，我們只需要最後一行的 JSON 結果
                 const lines = stdoutData.trim().split('\n');
                 let result = null;
                 
+                // 從最後一行往回找 JSON
                 for (let i = lines.length - 1; i >= 0; i--) {
                     try {
                         const json = JSON.parse(lines[i]);
@@ -156,6 +171,7 @@ async function runPythonScript(mode: 'preview' | 'generate', payload: any, outpu
     });
 }
 
+// 預覽功能
 export async function extractSongData(songs: SongInput[] | any[], pptLibraryPath: string): Promise<SongData[]> {
     const simplifiedSongs = songs.map(s => ({ 
         id: s.id || 0, 
@@ -171,8 +187,10 @@ export async function extractSongData(songs: SongInput[] | any[], pptLibraryPath
     }
 }
 
+// 生成檔案功能
 export async function generateFiles(input: SongInput[] | SongData[]): Promise<string> {
-    const PROJECT_ROOT = path.join(__dirname, '..', '..');
+    // 🛠️ 修正：使用 process.cwd() 確保路徑正確
+    const PROJECT_ROOT = process.cwd();
     const OUTPUT_DIR = path.join(PROJECT_ROOT, 'output');
     
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -182,8 +200,10 @@ export async function generateFiles(input: SongInput[] | SongData[]): Promise<st
     const outputPptx = path.join(OUTPUT_DIR, "敬拜PPT.pptx");
 
     try {
+        // Python 腳本會接收 RESOURCES_DIR 並透過其內部的 find_ppt_path 遞迴搜尋
         await runPythonScript('generate', input, OUTPUT_DIR);
         
+        // 開始打包 ZIP
         const output = fs.createWriteStream(zipPath);
         const archive = archiver('zip', { zlib: { level: 9 } });
 

@@ -10,25 +10,38 @@ import {
   Paper,
   Tabs,
   Tab,
-  Drawer,
   List,
   ListItem,
   ListItemButton,
   ListItemIcon,
   ListItemText,
   Divider,
-  Container
+  Container,
+  IconButton,
+  Tooltip,
+  AppBar,
+  useMediaQuery,
+  Drawer as MuiDrawer
 } from '@mui/material';
-import Login from './components/Login';
-import Register from './components/Register'; 
-import SongManager from './components/SongManager';
-import FileGenerator from './components/FileGenerator';
+import { styled, Theme, CSSObject, useTheme } from '@mui/material/styles';
+// Icons
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import QueueMusicIcon from '@mui/icons-material/QueueMusic'; 
 import LibraryMusicIcon from '@mui/icons-material/LibraryMusic'; 
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import MenuIcon from '@mui/icons-material/Menu';
 
+// Components
+import Login from './components/Login';
+import Register from './components/Register'; 
+import SongManager from './components/SongManager';
+import FileGenerator from './components/FileGenerator';
+
+const drawerWidth = 280;
+
+// 🎨 定義主題
 const theme = createTheme({
   palette: {
     primary: {
@@ -65,13 +78,169 @@ const theme = createTheme({
   },
 });
 
-const drawerWidth = 280;
+// 🛠️ 桌面版 Drawer 的樣式 Mixins
+const openedMixin = (theme: Theme): CSSObject => ({
+  width: drawerWidth,
+  transition: theme.transitions.create('width', {
+    easing: theme.transitions.easing.sharp,
+    duration: theme.transitions.duration.enteringScreen,
+  }),
+  overflowX: 'hidden',
+});
 
-function App() {
+const closedMixin = (theme: Theme): CSSObject => ({
+  transition: theme.transitions.create('width', {
+    easing: theme.transitions.easing.sharp,
+    duration: theme.transitions.duration.leavingScreen,
+  }),
+  overflowX: 'hidden',
+  width: `calc(${theme.spacing(7)} + 1px)`,
+  [theme.breakpoints.up('sm')]: {
+    width: `calc(${theme.spacing(8)} + 1px)`,
+  },
+});
+
+// 自定義 Styled Drawer (僅用於桌面版)
+const DesktopDrawer = styled(MuiDrawer, { shouldForwardProp: (prop) => prop !== 'open' })(
+  ({ theme, open }) => ({
+    width: drawerWidth,
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+    boxSizing: 'border-box',
+    ...(open && {
+      ...openedMixin(theme),
+      '& .MuiDrawer-paper': openedMixin(theme),
+    }),
+    ...(!open && {
+      ...closedMixin(theme),
+      '& .MuiDrawer-paper': closedMixin(theme),
+    }),
+  }),
+);
+
+// 抽出 Drawer 內容組件，讓手機/桌面共用
+const DrawerContent = ({ 
+  open, 
+  toggleDrawer, 
+  currentPage, 
+  setCurrentPage, 
+  adminToken, 
+  setShowLogin, 
+  handleLogout,
+  isMobile 
+}: any) => (
+  <Box sx={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
+    {/* 標題與切換按鈕 */}
+    <Toolbar sx={{ px: [1], justifyContent: open ? 'space-between' : 'center', py: 2 }}>
+      {open && (
+        <Typography variant="h6" noWrap component="div" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', ml: 1, fontWeight: 'bold' }}>
+          <MusicNoteIcon sx={{ mr: 1, fontSize: 28 }} />
+          Auto PPT
+        </Typography>
+      )}
+      {/* 手機版抽屜內只顯示關閉按鈕，桌面版顯示切換按鈕 */}
+      <IconButton onClick={toggleDrawer}>
+        {isMobile ? <ChevronLeftIcon /> : (open ? <ChevronLeftIcon /> : <MenuIcon />)}
+      </IconButton>
+    </Toolbar>
+    
+    <Divider />
+    
+    <List sx={{ px: 1, py: 2 }}>
+      <ListItem disablePadding sx={{ display: 'block', mb: 1 }}>
+        <Tooltip title={open ? "" : "製作敬拜檔案"} placement="right" arrow>
+          <ListItemButton 
+            selected={currentPage === 'generator'}
+            onClick={() => { setCurrentPage('generator'); if(isMobile) toggleDrawer(); }}
+            sx={{ 
+              minHeight: 48,
+              justifyContent: open ? 'initial' : 'center',
+              borderRadius: 2,
+              px: 2.5,
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 0, mr: open ? 3 : 'auto', justifyContent: 'center' }}>
+              <QueueMusicIcon />
+            </ListItemIcon>
+            <ListItemText primary="製作敬拜檔案" sx={{ opacity: open ? 1 : 0 }} primaryTypographyProps={{ fontSize: '1.1rem' }} />
+          </ListItemButton>
+        </Tooltip>
+      </ListItem>
+
+      <ListItem disablePadding sx={{ display: 'block' }}>
+        <Tooltip title={open ? "" : "詩歌資料庫"} placement="right" arrow>
+          <ListItemButton 
+            selected={currentPage === 'database'}
+            onClick={() => { setCurrentPage('database'); if(isMobile) toggleDrawer(); }}
+            sx={{ 
+              minHeight: 48,
+              justifyContent: open ? 'initial' : 'center',
+              borderRadius: 2,
+              px: 2.5,
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 0, mr: open ? 3 : 'auto', justifyContent: 'center' }}>
+              <LibraryMusicIcon />
+            </ListItemIcon>
+            <ListItemText primary="詩歌資料庫" sx={{ opacity: open ? 1 : 0 }} primaryTypographyProps={{ fontSize: '1.1rem' }} />
+          </ListItemButton>
+        </Tooltip>
+      </ListItem>
+    </List>
+    
+    <Box sx={{ flexGrow: 1 }} />
+    <Divider />
+    
+    <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {adminToken ? (
+        open ? (
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default', border: 'none', width: '100%' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, color: 'success.main' }}>
+              <AdminPanelSettingsIcon sx={{ mr: 1 }} />
+              <Typography variant="body1" fontWeight="bold">管理員已登入</Typography>
+            </Box>
+            <Button fullWidth variant="contained" color="error" startIcon={<ExitToAppIcon />} onClick={handleLogout}>
+              登出
+            </Button>
+          </Paper>
+        ) : (
+          <Tooltip title="管理員登出" placement="right">
+            <IconButton color="error" onClick={handleLogout}>
+              <ExitToAppIcon />
+            </IconButton>
+          </Tooltip>
+        )
+      ) : (
+        open ? (
+          <Button fullWidth variant="contained" onClick={() => { setShowLogin(true); if(isMobile) toggleDrawer(); }} sx={{ py: 1.5 }}>
+            管理員登入
+          </Button>
+        ) : (
+          <Tooltip title="管理員登入" placement="right">
+            <IconButton color="primary" onClick={() => { setShowLogin(true); if(isMobile) toggleDrawer(); }}>
+              <AdminPanelSettingsIcon />
+            </IconButton>
+          </Tooltip>
+        )
+      )}
+    </Box>
+  </Box>
+);
+
+// 內部 Layout 組件，負責響應式邏輯
+function DashboardLayout() {
+  const theme = useTheme();
+  // 斷點設為 md (900px)，小於此寬度視為手機/平板模式
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [currentTab, setCurrentTab] = useState(0); 
   const [currentPage, setCurrentPage] = useState<'generator' | 'database'>('generator');
+  
+  // 狀態管理
+  const [desktopOpen, setDesktopOpen] = useState(true); // 桌面版側邊欄
+  const [mobileOpen, setMobileOpen] = useState(false);  // 手機版側邊欄
 
   useEffect(() => {
     const storedToken = localStorage.getItem('adminToken');
@@ -89,84 +258,114 @@ function App() {
     localStorage.removeItem('adminToken');
   };
 
-  // 🛠️ 修正：將 event 改為 _event 或 _，表示忽略此參數
   const handleAuthTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
   };
 
-  const drawerContent = (
-    <Box sx={{ overflow: 'auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Toolbar sx={{ justifyContent: 'center', py: 2 }}>
-        <Typography variant="h5" noWrap component="div" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center' }}>
-          <MusicNoteIcon sx={{ mr: 1, fontSize: 32 }} />
-          Auto PPT
-        </Typography>
-      </Toolbar>
-      <Divider />
-      <List sx={{ px: 2, py: 2 }}>
-        <ListItem disablePadding sx={{ mb: 1 }}>
-          <ListItemButton 
-            selected={currentPage === 'generator'}
-            onClick={() => setCurrentPage('generator')}
-            sx={{ borderRadius: 2 }}
-          >
-            <ListItemIcon><QueueMusicIcon /></ListItemIcon>
-            <ListItemText primary="製作敬拜檔案" primaryTypographyProps={{ fontSize: '1.1rem' }} />
-          </ListItemButton>
-        </ListItem>
-        <ListItem disablePadding>
-          <ListItemButton 
-            selected={currentPage === 'database'}
-            onClick={() => setCurrentPage('database')}
-            sx={{ borderRadius: 2 }}
-          >
-            <ListItemIcon><LibraryMusicIcon /></ListItemIcon>
-            <ListItemText primary="詩歌資料庫" primaryTypographyProps={{ fontSize: '1.1rem' }} />
-          </ListItemButton>
-        </ListItem>
-      </List>
-      <Box sx={{ flexGrow: 1 }} />
-      <Divider />
-      <Box sx={{ p: 2 }}>
-        {adminToken ? (
-          <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default', border: 'none' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, color: 'success.main' }}>
-              <AdminPanelSettingsIcon sx={{ mr: 1 }} />
-              <Typography variant="body1" fontWeight="bold">管理員已登入</Typography>
-            </Box>
-            <Button fullWidth variant="contained" color="error" startIcon={<ExitToAppIcon />} onClick={handleLogout}>
-              登出
-            </Button>
-          </Paper>
-        ) : (
-          <Button fullWidth variant="contained" onClick={() => setShowLogin(true)} sx={{ py: 1.5 }}>
-            管理員登入
-          </Button>
-        )}
-      </Box>
-    </Box>
-  );
+  const handleDrawerToggle = () => {
+    if (isMobile) {
+      setMobileOpen(!mobileOpen);
+    } else {
+      setDesktopOpen(!desktopOpen);
+    }
+  };
 
   return (
-    <ThemeProvider theme={theme}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-        
-        <Drawer
-          variant="permanent"
-          sx={{
-            width: drawerWidth,
-            flexShrink: 0,
-            [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box', borderRight: '1px solid rgba(0,0,0,0.08)' },
+
+      {/* 📱 手機版頂部導航列 (僅在手機模式顯示) */}
+      <AppBar 
+        position="fixed" 
+        sx={{ 
+          display: { xs: 'block', md: 'none' },
+          zIndex: (theme) => theme.zIndex.drawer + 1 
+        }}
+      >
+        <Toolbar>
+          <IconButton
+            color="inherit"
+            aria-label="open drawer"
+            edge="start"
+            onClick={handleDrawerToggle}
+            sx={{ mr: 2 }}
+          >
+            <MenuIcon />
+          </IconButton>
+          <Typography variant="h6" noWrap component="div" sx={{ display: 'flex', alignItems: 'center', fontWeight: 'bold' }}>
+            <MusicNoteIcon sx={{ mr: 1 }} />
+            Auto PPT
+          </Typography>
+        </Toolbar>
+      </AppBar>
+
+      <Box sx={{ display: 'flex', flexGrow: 1, height: '100%', overflow: 'hidden' }}>
+        {/* 導航欄區域 */}
+        <Box
+          component="nav"
+          sx={{ width: { md: desktopOpen ? drawerWidth : 65 }, flexShrink: { md: 0 } }}
+        >
+          {/* 📱 手機版 Drawer (Temporary) */}
+          <MuiDrawer
+            variant="temporary"
+            open={mobileOpen}
+            onClose={handleDrawerToggle}
+            ModalProps={{ keepMounted: true }} // 提升手機版開啟效能
+            sx={{
+              display: { xs: 'block', md: 'none' },
+              '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
+            }}
+          >
+            <DrawerContent 
+              open={true} // 手機版打開時總是展開狀態
+              toggleDrawer={handleDrawerToggle}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+              adminToken={adminToken}
+              setShowLogin={setShowLogin}
+              handleLogout={handleLogout}
+              isMobile={true}
+            />
+          </MuiDrawer>
+
+          {/* 💻 桌面版 Drawer (Permanent/Mini) */}
+          <DesktopDrawer
+            variant="permanent"
+            open={desktopOpen}
+            sx={{
+              display: { xs: 'none', md: 'block' },
+            }}
+          >
+            <DrawerContent 
+              open={desktopOpen}
+              toggleDrawer={handleDrawerToggle}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+              adminToken={adminToken}
+              setShowLogin={setShowLogin}
+              handleLogout={handleLogout}
+              isMobile={false}
+            />
+          </DesktopDrawer>
+        </Box>
+
+        {/* 📄 主要內容區域 */}
+        <Box 
+          component="main" 
+          sx={{ 
+            flexGrow: 1, 
+            p: 2, 
+            bgcolor: '#f4f6f8', 
+            height: '100vh', // 使用 vh 確保填滿
+            overflow: 'hidden', 
+            display: 'flex', 
+            flexDirection: 'column',
+            width: { xs: '100%', md: `calc(100% - ${desktopOpen ? drawerWidth : 65}px)` },
+            mt: { xs: '56px', sm: '64px', md: 0 } // 手機版預留 AppBar 高度
           }}
         >
-          {drawerContent}
-        </Drawer>
-
-        <Box component="main" sx={{ flexGrow: 1, p: 2, bgcolor: '#f4f6f8', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          
           {showLogin && !adminToken ? (
-            <Container maxWidth="sm" sx={{ mt: 8, flex: 1, overflow: 'auto' }}>
+            <Container maxWidth="sm" sx={{ mt: { xs: 2, md: 8 }, flex: 1, overflow: 'auto' }}>
               <Paper elevation={4} sx={{ p: 4, borderRadius: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
                    <Tabs value={currentTab} onChange={handleAuthTabChange} centered variant="fullWidth" sx={{ width: '100%' }}>
@@ -183,14 +382,14 @@ function App() {
           ) : (
             <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               {currentPage === 'generator' && (
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  <Typography variant="h4" sx={{ mb: 2, fontWeight: 'bold', color: '#2c3e50' }}>
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                  <Typography variant="h4" sx={{ mb: 2, fontWeight: 'bold', color: '#2c3e50', fontSize: { xs: '1.5rem', md: '2.125rem' } }}>
                     製作敬拜檔案
                   </Typography>
                   <Paper 
                     elevation={0} 
                     sx={{ 
-                      p: 2, 
+                      p: { xs: 1, md: 2 }, 
                       borderRadius: 3, 
                       border: '1px solid #e0e0e0',
                       flex: 1, 
@@ -206,10 +405,10 @@ function App() {
 
               {currentPage === 'database' && (
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-                  <Typography variant="h4" sx={{ mb: 2, fontWeight: 'bold', color: '#2c3e50' }}>
+                  <Typography variant="h4" sx={{ mb: 2, fontWeight: 'bold', color: '#2c3e50', fontSize: { xs: '1.5rem', md: '2.125rem' } }}>
                     詩歌資料庫
                   </Typography>
-                  <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e0e0e0' }}>
+                  <Paper elevation={0} sx={{ p: { xs: 1, md: 3 }, borderRadius: 3, border: '1px solid #e0e0e0' }}>
                     <SongManager token={adminToken} />
                   </Paper>
                 </Box>
@@ -218,6 +417,15 @@ function App() {
           )}
         </Box>
       </Box>
+    </Box>
+  );
+}
+
+// 主 App 組件提供 Theme Context
+function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <DashboardLayout />
     </ThemeProvider>
   );
 }

@@ -2,16 +2,16 @@
 FROM node:18-alpine
 
 # 1. 安裝 Python 3, pip 和建置工具
-# --no-cache 避免暫存檔佔用空間
-# build-base 用於編譯某些可能需要的原生模組
-RUN apk add --no-cache python3 py3-pip build-base
+# ⚠️ 關鍵修正：新增 libxml2-dev, libxslt-dev, python3-dev
+# 這是 python-pptx 在 Alpine Linux 上能夠正確提取文字所必需的依賴
+RUN apk add --no-cache python3 py3-pip build-base python3-dev libxml2-dev libxslt-dev
 
 # 設定工作目錄
 WORKDIR /app
 
 # 2. 先複製 Python 依賴並安裝 (利用 Docker Cache 機制)
 COPY requirements.txt .
-# --break-system-packages 是因為 Alpine 新版 Python 安全策略，在容器內我們可以直接安裝
+# --break-system-packages 是因為 Alpine 新版 Python 安全策略
 RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
 
 # 3. 複製 Node.js 依賴並安裝
