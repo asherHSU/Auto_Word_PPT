@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Box, TextField, Button, Typography, Alert, CircularProgress } from '@mui/material';
+import { Box, TextField, Button, Alert, CircularProgress } from '@mui/material';
 import LoginIcon from '@mui/icons-material/Login';
 
 interface LoginProps {
-  onLoginSuccess: (token: string) => void;
+  // ✨ 修改介面：允許回傳 role
+  onLoginSuccess: (token: string, role?: string) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
@@ -28,7 +29,8 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       const data = await response.json();
       
       if (response.ok && data.token) {
-        onLoginSuccess(data.token);
+        // ✨ 將 role 傳遞給 App.tsx
+        onLoginSuccess(data.token, data.role);
       } else {
         setMessage({ type: 'error', text: data.message || '登入失敗，請檢查帳號密碼。' });
       }
@@ -41,9 +43,6 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
   return (
     <Box component="form" onSubmit={handleLogin} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Typography variant="h6" align="center" gutterBottom>
-        歡迎回來
-      </Typography>
       
       <TextField
         label="帳號"
