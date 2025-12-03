@@ -157,3 +157,7 @@ docker push asher31892774/church-backend:latest
 docker-compose down
 docker-compose up -d --build
 ```
+
+```bash
+sudo docker-compose down && sudo docker-compose build --no-cache && sudo docker-compose up -d
+```

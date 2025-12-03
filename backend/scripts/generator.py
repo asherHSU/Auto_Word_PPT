@@ -2,6 +2,12 @@ import sys
 import json
 import os
 import re
+import io
+
+# 設定標準輸出為 UTF-8，避免中文亂碼
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 # 引入 docx 和 pptx 相關套件
 try:
     from docx import Document
@@ -15,17 +21,7 @@ except ImportError as e:
     print(json.dumps({"error": f"Missing dependency: {e}"}))
     sys.exit(1)
 
-import io
-# 設定標準輸出為 UTF-8，避免中文亂碼
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
-
 # --- 參數解析 ---
-# argv[1]: 模式 ("preview" or "generate")
-# argv[2]: 歌單 JSON 字串
-# argv[3]: 資源目錄
-# argv[4]: 輸出目錄 (僅 generate 模式需要)
-
 try:
     MODE = sys.argv[1]
     songs_input = json.loads(sys.argv[2])
@@ -39,16 +35,19 @@ PPT_LIBRARY_PATH = os.path.join(RESOURCES_DIR, "ppt_library")
 TEMPLATE_PATH = os.path.join(RESOURCES_DIR, "template.docx")
 
 # --- 輔助函式 ---
+
 def clean_text(text):
+    """清除 XML 不支援的控制字元"""
     return re.sub(r'[\x00-\x08\x0e-\x1f]', '', text)
 
 def normalize_string(s):
+    """正規化字串：去除非英數中文並轉小寫，用於比對檔名"""
     return re.sub(r'[^\u4e00-\u9fa5a-zA-Z0-9]', '', s).lower()
 
 def find_ppt_path(root_path, song_id, song_name):
+    """遞迴搜尋 PPT 檔案"""
     if not os.path.exists(root_path): return None
     target_name = normalize_string(song_name)
-    # 支援 id 為字串或數字
     id_str = str(song_id)
     id_regex = re.compile(rf"^0*{id_str}([^0-9]|$)")
 
@@ -61,10 +60,7 @@ def find_ppt_path(root_path, song_id, song_name):
     return None
 
 def extract_lyrics_from_ppt(ppt_path):
-    """
-    Extracts lyrics from a PPTX file, preserving the slide structure.
-    Returns a list of lists, where each inner list represents the lines on a slide.
-    """
+    """從 PPTX 提取歌詞"""
     if not ppt_path or not ppt_path.lower().endswith(".pptx"): return []
     try:
         prs = Presentation(ppt_path)
@@ -73,7 +69,7 @@ def extract_lyrics_from_ppt(ppt_path):
             slide_lines = []
             for shape in slide.shapes:
                 if not shape.has_text_frame or not shape.text.strip(): continue
-                if shape.top < prs.slide_height / 2:
+                if shape.top < prs.slide_height * 0.9:
                     text = shape.text_frame.text.replace('\v', '\n')
                     for line in text.splitlines():
                         if line.strip():
@@ -86,25 +82,110 @@ def extract_lyrics_from_ppt(ppt_path):
         return []
 
 def apply_font_settings(paragraph, font_name, font_size, font_color, is_bold=False):
+    """設定 PPT 文字樣式"""
     for run in paragraph.runs:
         run.font.name = font_name
         run.font.size = PptPt(font_size)
         run.font.color.rgb = font_color
         run.font.bold = is_bold
 
+def calculate_optimal_font_size(lines):
+    """
+    🔍 智慧字體大小計算 (Smart Font Sizing)
+    
+    同時考量：
+    1. 最長單行的字元寬度 (避免水平超出)
+    2. 總行數的堆疊高度 (避免垂直超出)
+    
+    Args:
+        lines (list): 該頁面的所有行文字
+    Returns:
+        int: 計算出的最佳字體大小 (points)
+    """
+    if not lines: return 48 # 預設大字體
+    
+    # 1. 計算最長那行的「視覺寬度」
+    max_visual_width = 0
+    for line in lines:
+        current_width = 0
+        for char in line:
+            # 簡單權重：全形字(中文)算 1，半形字(英文/數字)算 0.55
+            if ord(char) > 127: 
+                current_width += 1
+            else:
+                current_width += 0.55
+        if current_width > max_visual_width:
+            max_visual_width = current_width
+
+    # 2. 定義畫布限制 (Points)
+    # PPT 寬度 10吋，左右邊界各 0.5吋 -> 可用寬度 9吋 = 648 pt
+    # PPT 高度 5.625吋，扣掉標題與邊界 -> 可用高度約 3.5吋 = 252 pt
+    
+    SAFE_WIDTH_PTS = 610  # 保險起見稍微縮小
+    SAFE_HEIGHT_PTS = 230 # 用於歌詞的垂直空間
+    
+    # 3. 根據「寬度」計算上限
+    # 假設字體大小為 S，全形字寬度約為 S
+    # S * max_visual_width <= SAFE_WIDTH_PTS
+    if max_visual_width < 1: max_visual_width = 1
+    size_limit_by_width = int(SAFE_WIDTH_PTS / max_visual_width)
+    
+    # 4. 根據「高度」計算上限
+    # 假設行高倍率為 1.15
+    # total_lines * S * 1.15 <= SAFE_HEIGHT_PTS
+    line_count = len(lines)
+    if line_count < 1: line_count = 1
+    size_limit_by_height = int(SAFE_HEIGHT_PTS / (line_count * 1.15))
+    
+    # 5. 取兩者最小值，並設定合理的上下限
+    final_size = min(size_limit_by_width, size_limit_by_height, 54) # 最大不超過 54
+    
+    if final_size < 24: final_size = 24 # 最小不低於 24 (再小就看不到了，讓它自動換行)
+    
+    return final_size
+
+def group_lyrics_dynamic(lyrics_list, max_lines=2):
+    """動態歌詞分組演算法"""
+    groups = []
+    current_buffer = []
+    markers = (
+        '1', '2', '3', '4', '5', '6', '7', '8', '9', 
+        'c', 'b', 'v', 'p', 't', 'e', 
+        '§', '※', '©', '®', '＊', '*', 
+        'bridge', 'chorus', 'verse', 'pre-chorus', 'tag', 'ending',
+        '(1)', '(2)', '(3)', '(4)', '(c)', '(b)', '(v)', 
+        '（1）', '（2）', '（3）', '（c）', '（b）', 
+        '[1]', '[2]', '[c]', '[b]',
+        'verse', 'chorus', 'pc', 'p-c'
+    )
+
+    for line in lyrics_list:
+        clean_line = line.strip()
+        if not clean_line: continue 
+
+        is_marker_line = clean_line.lower().startswith(markers)
+        
+        if len(current_buffer) >= max_lines or (current_buffer and is_marker_line):
+            groups.append(current_buffer)
+            current_buffer = [] 
+
+        current_buffer.append(line)
+
+    if current_buffer:
+        groups.append(current_buffer)
+        
+    return groups
+
 # --- 主邏輯 ---
 
 if MODE == "preview":
-    # 預覽模式：回傳 [{title, lyrics}, ...] JSON
     results = []
     for song in songs_input:
         song_id = song.get('id', 0)
         song_name = song.get('name', '') or song.get('title', '')
         
         ppt_path = find_ppt_path(PPT_LIBRARY_PATH, song_id, song_name)
-        # lyrics_by_slide is a list of lists
         lyrics_by_slide = extract_lyrics_from_ppt(ppt_path)
-        # Flatten the list for preview compatibility
         flat_lyrics = [line for slide in lyrics_by_slide for line in slide]
         
         results.append({
@@ -113,12 +194,9 @@ if MODE == "preview":
             "found": bool(ppt_path),
             "isOld": ppt_path.endswith(".ppt") if ppt_path else False
         })
-    
-    # 直接輸出 JSON 到 stdout 供 Node.js 讀取
     print(json.dumps(results, ensure_ascii=False))
 
 elif MODE == "generate":
-    # 生成模式：建立 Word/PPT
     if not OUTPUT_DIR:
         print(json.dumps({"error": "Output directory required"}))
         sys.exit(1)
@@ -126,17 +204,16 @@ elif MODE == "generate":
     OUTPUT_DOCX = os.path.join(OUTPUT_DIR, "敬拜大字報.docx")
     OUTPUT_PPTX = os.path.join(OUTPUT_DIR, "敬拜PPT.pptx")
 
-    # 1. Word
+    # Word 初始化
     try:
         doc = Document(TEMPLATE_PATH)
-        # 移除範本中可能存在的第一個空段落
         if doc.paragraphs and not doc.paragraphs[0].text.strip():
             p_element = doc.paragraphs[0]._element
             p_element.getparent().remove(p_element)
     except:
-        doc = Document() # Fallback
+        doc = Document()
 
-    # 2. PPT
+    # PPT 初始化
     prs = Presentation()
     prs.slide_width = Inches(10)
     prs.slide_height = Inches(5.625)
@@ -144,10 +221,8 @@ elif MODE == "generate":
     YELLOW_TEXT = PptRGBColor(255, 255, 0)
     FONT_NAME = "微軟正黑體"
 
-    # 處理資料
     for i, song in enumerate(songs_input):
         title = song.get('title') or song.get('name')
-        
         is_from_preview = 'lyrics' in song and song['lyrics'] is not None
         
         lyrics_data = []
@@ -155,96 +230,65 @@ elif MODE == "generate":
             lyrics_data = [re.sub(r'[ \t]+', ' ', line) for line in song['lyrics']]
         else:
             sid = song.get('id', 0)
-            path = find_ppt_path(PPT_LIBRARY_PATH, sid, title)
-            lyrics_data = extract_lyrics_from_ppt(path)
+            path_found = find_ppt_path(PPT_LIBRARY_PATH, sid, title)
+            lyrics_data = extract_lyrics_from_ppt(path_found)
 
-        # --- 生成 Word ---
-        # Word generation always needs a flat list of lyrics
-        flat_lyrics = []
-        if is_from_preview:
-            flat_lyrics = lyrics_data
-        else: # It's a list of lists, flatten it
-            flat_lyrics = [line for slide in lyrics_data for line in slide]
+        # 生成 Word
+        flat_lyrics = lyrics_data if is_from_preview else [line for slide in lyrics_data for line in slide]
 
-        if i > 0:
-            doc.add_paragraph("")
-
+        if i > 0: doc.add_paragraph("")
         doc.add_paragraph(f"【{title}】", style='SongTitle' if 'SongTitle' in doc.styles else None)
         
         if not flat_lyrics:
             p = doc.add_paragraph()
             run = p.add_run("【無歌詞內容】")
-            run.font.color.rgb = RGBColor(0, 0, 0) # Changed to black
+            run.font.color.rgb = RGBColor(0, 0, 0)
         else:
             for line in flat_lyrics:
                 p = doc.add_paragraph(line, style='Lyrics' if 'Lyrics' in doc.styles else None)
                 p.paragraph_format.space_before = Pt(0)
                 p.paragraph_format.space_after = Pt(0)
-                
-                if line.strip().lower().startswith(('c.', 'b.')):
-                    for run in p.runs:
-                        run.font.bold = True
-                        # run.font.color.rgb = RGBColor(255, 0, 0) # Removed red color setting
+                if line.strip().lower().startswith(('c.', 'b.', 'bridge', 'chorus')):
+                    for run in p.runs: run.font.bold = True
         
-        # --- 生成 PPT ---
+        # 生成 PPT
         if not lyrics_data: continue
-        
         layout = prs.slide_layouts[6] 
 
+        # 決定如何分頁 (分組)
+        final_slides_content = []
         if is_from_preview:
-            # Logic for flat list from preview
-            for i in range(0, len(lyrics_data), 2):
-                slide = prs.slides.add_slide(layout)
-                slide.background.fill.solid()
-                slide.background.fill.fore_color.rgb = BLACK_FILL
-
-                line1 = lyrics_data[i]
-                lyric_text = line1
-                if i + 1 < len(lyrics_data):
-                    lyric_text += f"\n{lyrics_data[i+1]}"
-
-                tb_lyrics = slide.shapes.add_textbox(Inches(0.5), Inches(0.1), Inches(9), Inches(2.5))
-                tf_lyrics = tb_lyrics.text_frame
-                p_lyrics = tf_lyrics.paragraphs[0]
-                p_lyrics.text = lyric_text
-                p_lyrics.alignment = PP_ALIGN.CENTER
-                apply_font_settings(p_lyrics, FONT_NAME, 32, YELLOW_TEXT, True)
-
-                tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(5.1), Inches(9), Inches(0.5))
-                tf_title = tb_title.text_frame
-                p_title = tf_title.paragraphs[0]
-                p_title.text = f"《{title}》"
-                p_title.alignment = PP_ALIGN.CENTER
-                apply_font_settings(p_title, FONT_NAME, 20, YELLOW_TEXT, False)
+            final_slides_content = group_lyrics_dynamic(lyrics_data, max_lines=2)
         else:
-            # Logic for list of lists from direct extraction
-            for slide_lines in lyrics_data:
-                slide = prs.slides.add_slide(layout)
-                slide.background.fill.solid()
-                slide.background.fill.fore_color.rgb = BLACK_FILL
+            final_slides_content = lyrics_data # 原始檔案結構
 
-                num_lines = len(slide_lines)
-                font_size = 32
-                if num_lines == 3:
-                    font_size = 28
-                elif num_lines >= 4:
-                    font_size = 24
-                
-                lyric_text = "\n".join(slide_lines)
+        for slide_lines in final_slides_content:
+            slide = prs.slides.add_slide(layout)
+            slide.background.fill.solid()
+            slide.background.fill.fore_color.rgb = BLACK_FILL
 
-                tb_lyrics = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(9), Inches(2.5))
-                tf_lyrics = tb_lyrics.text_frame
-                p_lyrics = tf_lyrics.paragraphs[0]
-                p_lyrics.text = lyric_text
-                p_lyrics.alignment = PP_ALIGN.CENTER
-                apply_font_settings(p_lyrics, FONT_NAME, font_size, YELLOW_TEXT, True)
+            lyric_text = "\n".join(slide_lines)
+            
+            # ✨✨✨ 使用新的智慧字體計算 ✨✨✨
+            font_size = calculate_optimal_font_size(slide_lines)
 
-                tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(5.1), Inches(9), Inches(0.5))
-                tf_title = tb_title.text_frame
-                p_title = tf_title.paragraphs[0]
-                p_title.text = f"《{title}》"
-                p_title.alignment = PP_ALIGN.CENTER
-                apply_font_settings(p_title, FONT_NAME, 20, YELLOW_TEXT, False)
+            # 歌詞文字方塊
+            tb_lyrics = slide.shapes.add_textbox(Inches(0.5), Inches(0.1), Inches(9), Inches(3.5))
+            tf_lyrics = tb_lyrics.text_frame
+            tf_lyrics.word_wrap = True # 允許自動換行 (作為最後防線)
+            
+            p_lyrics = tf_lyrics.paragraphs[0]
+            p_lyrics.text = lyric_text
+            p_lyrics.alignment = PP_ALIGN.CENTER
+            apply_font_settings(p_lyrics, FONT_NAME, font_size, YELLOW_TEXT, True)
+
+            # Footer
+            tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(5.0), Inches(9), Inches(0.5))
+            tf_title = tb_title.text_frame
+            p_title = tf_title.paragraphs[0]
+            p_title.text = f"《{title}》"
+            p_title.alignment = PP_ALIGN.CENTER
+            apply_font_settings(p_title, FONT_NAME, 20, YELLOW_TEXT, False)
 
     doc.save(OUTPUT_DOCX)
     prs.save(OUTPUT_PPTX)
